@@ -18,11 +18,6 @@ import shutil
 import requests
 from pathlib import Path
 import time
-import moviepy.editor as mp
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import ImageClip
-from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
-from moviepy.audio.io.AudioFileClip import AudioFileClip
 import aiofiles
 
 # Configure logging
@@ -63,68 +58,43 @@ Path("static/videos").mkdir(parents=True, exist_ok=True)
 Path("static/thumbnails").mkdir(parents=True, exist_ok=True)
 Path("static/temp").mkdir(parents=True, exist_ok=True)
 
-# Setup AI Services - COMPLETELY FIXED VERSION
+# Setup AI Services - ULTRA SIMPLE VERSION
 def setup_ai_services():
-    """Initialize AI services with error handling"""
+    """Initialize AI services with minimal configuration"""
     services_status = {}
+    openai_client = None
     
-    # OpenAI Client Setup - SIMPLIFIED
+    # OpenAI Client Setup - ABSOLUTELY MINIMAL
     try:
         if OPENAI_API_KEY:
-            # Minimal initialization - no proxies, no extra parameters
-            openai_client = OpenAI(
-                api_key=OPENAI_API_KEY,
-                # Remove any proxy-related parameters that might cause issues
-            )
+            # SIMPLEST POSSIBLE INITIALIZATION - NO EXTRA PARAMETERS
+            openai_client = OpenAI(api_key=OPENAI_API_KEY)
             services_status['openai'] = "Connected"
-            logger.info("OpenAI client initialized successfully")
+            logger.info("✅ OpenAI client initialized successfully")
         else:
-            openai_client = None
-            services_status['openai'] = "No API key"
-            logger.warning("OpenAI API key not found")
+            services_status['openai'] = "No API key - using demo mode"
+            logger.warning("⚠️ OpenAI API key not found")
     except Exception as e:
-        openai_client = None
-        error_msg = str(e)
-        logger.error(f"OpenAI initialization error: {error_msg}")
-        
-        # Try alternative initialization if the first fails
-        try:
-            if OPENAI_API_KEY:
-                openai_client = OpenAI(api_key=OPENAI_API_KEY)
-                services_status['openai'] = "Connected (fallback)"
-                logger.info("OpenAI client initialized with fallback method")
-        except Exception as fallback_error:
-            services_status['openai'] = f"Error: {str(fallback_error)}"
-            logger.error(f"OpenAI fallback initialization also failed: {fallback_error}")
+        services_status['openai'] = f"Error: {str(e)}"
+        logger.error(f"❌ OpenAI initialization failed: {e}")
     
     # ElevenLabs Setup
     try:
         if ELEVENLABS_API_KEY:
             set_api_key(ELEVENLABS_API_KEY)
-            # Test with a simple API call
-            try:
-                voices = elevenlabs.voices()
-                services_status['elevenlabs'] = "Connected"
-                logger.info("ElevenLabs connected successfully")
-            except Exception as api_error:
-                error_msg = str(api_error)
-                if "Free Tier" in error_msg or "abuse" in error_msg.lower():
-                    services_status['elevenlabs'] = "Free tier restricted - using demo mode"
-                    logger.warning("ElevenLabs free tier restricted")
-                else:
-                    services_status['elevenlabs'] = f"API Error: {str(api_error)}"
-                    logger.error(f"ElevenLabs API error: {api_error}")
+            services_status['elevenlabs'] = "Connected"
+            logger.info("✅ ElevenLabs connected successfully")
         else:
             services_status['elevenlabs'] = "No API key - using demo mode"
-            logger.warning("ElevenLabs API key not found")
+            logger.warning("⚠️ ElevenLabs API key not found")
     except Exception as e:
-        services_status['elevenlabs'] = f"Setup Error: {str(e)}"
-        logger.error(f"ElevenLabs setup error: {e}")
+        services_status['elevenlabs'] = f"Error: {str(e)}"
+        logger.error(f"❌ ElevenLabs setup failed: {e}")
     
     return services_status, openai_client
 
 ai_services_status, openai_client = setup_ai_services()
-logger.info(f"AI Services Status: {ai_services_status}")
+logger.info(f"🎯 AI Services Status: {ai_services_status}")
 
 # Pydantic Models
 class ScriptRequest(BaseModel):
@@ -160,10 +130,10 @@ SUPPORTED_LANGUAGES = ["hindi", "tamil", "telugu", "bengali", "marathi", "gujara
 SUPPORTED_CONTENT_TYPES = ["educational", "marketing", "entertainment", "news", "tutorial"]
 SUPPORTED_PLATFORMS = ["youtube", "instagram", "tiktok", "facebook", "whatsapp"]
 
-# Project Storage (In production, use database)
+# Project Storage
 projects_db = {}
 
-# Simple rate limiting storage
+# Rate limiting storage
 rate_limit_storage = {}
 
 # Utility Functions
@@ -180,13 +150,13 @@ def cleanup_old_files(directory: Path, max_age_hours: int = 24):
         for file_path in directory.glob("*"):
             if file_path.is_file() and (current_time - file_path.stat().st_mtime) > (max_age_hours * 3600):
                 file_path.unlink()
-                logger.info(f"Cleaned up old file: {file_path}")
+                logger.info(f"🧹 Cleaned up old file: {file_path}")
     except Exception as e:
-        logger.error(f"Error cleaning up files: {e}")
+        logger.error(f"❌ Error cleaning up files: {e}")
 
 def check_rate_limit(request: Request, endpoint: str, limit: int = 10, window: int = 60):
     """Simple rate limiting implementation"""
-    client_ip = request.client.host
+    client_ip = request.client.host or "unknown"
     key = f"{client_ip}:{endpoint}"
     current_time = time.time()
     
@@ -206,7 +176,7 @@ def check_rate_limit(request: Request, endpoint: str, limit: int = 10, window: i
 @app.get("/")
 async def root(request: Request):
     return {
-        "message": "AI Video Content Creator API is running!",
+        "message": "🚀 AI Video Content Creator API is running!",
         "status": "active",
         "service": "Advanced AI Video Creation Platform",
         "ai_services": ai_services_status,
@@ -238,15 +208,12 @@ async def health_check(request: Request):
 
 @app.post("/generate-script")
 async def generate_script(request: Request, script_request: ScriptRequest):
-    """
-    Generate video script using GPT-4 with Indian cultural context
-    """
-    # Simple rate limiting
+    """Generate video script using AI with Indian cultural context"""
     if not check_rate_limit(request, "generate_script", 10, 60):
         raise HTTPException(429, "Rate limit exceeded. Please try again in a minute.")
     
     try:
-        logger.info(f"Script request: {script_request.topic}")
+        logger.info(f"📝 Script request: {script_request.topic}")
         
         # Validate inputs
         if script_request.target_language.lower() not in SUPPORTED_LANGUAGES:
@@ -261,20 +228,20 @@ async def generate_script(request: Request, script_request: ScriptRequest):
         # Build culturally relevant prompt
         prompt = build_indian_context_prompt(script_request)
         
-        # Generate script with timeout (60 seconds max)
+        # Generate script with timeout
         try:
             script = await asyncio.wait_for(
-                generate_script_with_gpt4(prompt),
+                generate_script_with_ai(prompt),
                 timeout=60.0
             )
         except asyncio.TimeoutError:
-            logger.warning(f"Script generation timeout")
+            logger.warning(f"⏰ Script generation timeout")
             raise HTTPException(408, "Script generation timed out (60s limit)")
         
         # Generate storyboard
         storyboard = generate_storyboard_from_script(script, script_request.duration)
         
-        logger.info(f"Script generation completed successfully")
+        logger.info(f"✅ Script generation completed successfully")
         
         return {
             "success": True,
@@ -293,28 +260,25 @@ async def generate_script(request: Request, script_request: ScriptRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Script generation error: {e}")
+        logger.error(f"❌ Script generation error: {e}")
         raise HTTPException(500, f"Script generation failed: {str(e)}")
 
 @app.post("/generate-voiceover")
 async def generate_voiceover(request: Request, voiceover_request: VoiceOverRequest):
-    """
-    Generate voiceover in Indian languages using ElevenLabs with fallback
-    """
-    # Simple rate limiting
+    """Generate voiceover in Indian languages using ElevenLabs with fallback"""
     if not check_rate_limit(request, "generate_voiceover", 5, 60):
         raise HTTPException(429, "Rate limit exceeded. Please try again in a minute.")
     
     try:
-        logger.info(f"Voiceover: {voiceover_request.language}")
+        logger.info(f"🎤 Voiceover request: {voiceover_request.language}")
         
         if voiceover_request.language.lower() not in SUPPORTED_LANGUAGES:
             raise HTTPException(400, f"Language must be one of: {SUPPORTED_LANGUAGES}")
 
-        # Check if ElevenLabs is available and not restricted
+        # Check if ElevenLabs is available
         elevenlabs_status = ai_services_status.get('elevenlabs', '')
-        if "restricted" in elevenlabs_status.lower() or "error" in elevenlabs_status.lower() or not ELEVENLABS_API_KEY:
-            logger.info("Using demo voiceover mode due to ElevenLabs restrictions")
+        if "Connected" not in elevenlabs_status or not ELEVENLABS_API_KEY:
+            logger.info("🔶 Using demo voiceover mode")
             return await generate_demo_voiceover(voiceover_request)
         
         # Try to generate with ElevenLabs
@@ -326,7 +290,7 @@ async def generate_voiceover(request: Request, voiceover_request: VoiceOverReque
                 voiceover_request.speed
             )
             
-            logger.info(f"Voiceover generation completed successfully")
+            logger.info(f"✅ Voiceover generation completed successfully")
             
             return {
                 "success": True,
@@ -341,12 +305,11 @@ async def generate_voiceover(request: Request, voiceover_request: VoiceOverReque
             }
             
         except Exception as elevenlabs_error:
-            logger.warning(f"ElevenLabs failed, using demo mode: {elevenlabs_error}")
+            logger.warning(f"🔶 ElevenLabs failed, using demo mode: {elevenlabs_error}")
             return await generate_demo_voiceover(voiceover_request)
 
     except Exception as e:
-        logger.error(f"Voiceover generation error: {e}")
-        # Fallback to demo mode
+        logger.error(f"❌ Voiceover generation error: {e}")
         return await generate_demo_voiceover(voiceover_request)
 
 @app.post("/search-media")
@@ -356,15 +319,12 @@ async def search_media(
     media_type: str = Form("image"),
     cultural_context: bool = Form(True)
 ):
-    """
-    Search stock media from integrated APIs with Indian context
-    """
-    # Simple rate limiting
+    """Search stock media from integrated APIs with Indian context"""
     if not check_rate_limit(request, "search_media", 20, 60):
         raise HTTPException(429, "Rate limit exceeded. Please try again in a minute.")
     
     try:
-        logger.info(f"Media search: {query}, type: {media_type}")
+        logger.info(f"🖼️ Media search: {query}, type: {media_type}")
         
         # Enhanced query for Indian context
         enhanced_query = add_indian_context(query) if cultural_context else query
@@ -396,7 +356,7 @@ async def search_media(
         }
 
     except Exception as e:
-        logger.error(f"Media search error: {e}")
+        logger.error(f"❌ Media search error: {e}")
         raise HTTPException(500, f"Media search failed: {str(e)}")
 
 @app.post("/create-video-project")
@@ -410,15 +370,12 @@ async def create_video_project(
     target_platform: str = Form("youtube"),
     duration: int = Form(...)
 ):
-    """
-    Create a new video project and start processing
-    """
-    # Simple rate limiting
+    """Create a new video project and start processing"""
     if not check_rate_limit(request, "create_video_project", 5, 60):
         raise HTTPException(429, "Rate limit exceeded. Please try again in a minute.")
     
     try:
-        logger.info(f"Creating video project: {title}")
+        logger.info(f"🎬 Creating video project: {title}")
         
         project_id = await generate_project_id()
         
@@ -426,7 +383,7 @@ async def create_video_project(
         try:
             media_files_list = json.loads(media_files)
         except Exception as e:
-            logger.warning(f"Failed to parse media_files, using empty list: {e}")
+            logger.warning(f"🔶 Failed to parse media_files, using empty list: {e}")
             media_files_list = []
         
         project = VideoProject(
@@ -454,26 +411,24 @@ async def create_video_project(
             duration
         )
         
-        logger.info(f"Video project created successfully: {project_id}")
+        logger.info(f"✅ Video project created successfully: {project_id}")
         
         return {
             "success": True,
             "project_id": project_id,
             "status": "processing",
             "message": "Video project created and processing started",
-            "estimated_time": duration * 10,  # 10 seconds per minute of video
+            "estimated_time": duration * 10,
             "timestamp": get_timestamp()
         }
 
     except Exception as e:
-        logger.error(f"Project creation error: {e}")
+        logger.error(f"❌ Project creation error: {e}")
         raise HTTPException(500, f"Project creation failed: {str(e)}")
 
 @app.get("/project-status/{project_id}")
 async def get_project_status(request: Request, project_id: str):
-    """
-    Get video project processing status
-    """
+    """Get video project processing status"""
     project = projects_db.get(project_id)
     if not project:
         raise HTTPException(404, "Project not found")
@@ -543,47 +498,39 @@ def build_indian_context_prompt(request: ScriptRequest) -> str:
     Return the script in a clear, structured format with scene descriptions.
     """
 
-async def generate_script_with_gpt4(prompt: str) -> str:
-    """Generate script using GPT-4 with fallback"""
+async def generate_script_with_ai(prompt: str) -> str:
+    """Generate script using AI with fallback"""
     try:
         if not openai_client:
-            logger.info("Using demo script - OpenAI client not available")
+            logger.info("🔶 Using demo script - OpenAI client not available")
             return generate_demo_script()
         
-        # Try different models with fallback
-        models_to_try = ["gpt-3.5-turbo", "gpt-4"]  # Try 3.5 first as it's more reliable
-        
-        for model in models_to_try:
-            try:
-                logger.info(f"Attempting to generate script with {model}")
-                response = openai_client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "You are an expert video script writer specializing in Indian content creation. Create engaging, culturally appropriate scripts."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=2000,
-                    temperature=0.7
-                )
-                
-                script = response.choices[0].message.content
-                logger.info(f"Successfully generated script with {model}")
-                return script
-                
-            except Exception as model_error:
-                logger.warning(f"Model {model} failed: {model_error}")
-                continue
-        
-        # If all models fail, use demo script
-        logger.info("All AI models failed, using demo script")
-        return generate_demo_script()
+        try:
+            logger.info("🤖 Attempting to generate script with AI")
+            response = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",  # Use 3.5-turbo as it's more reliable
+                messages=[
+                    {"role": "system", "content": "You are an expert video script writer specializing in Indian content creation. Create engaging, culturally appropriate scripts."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=2000,
+                temperature=0.7
+            )
+            
+            script = response.choices[0].message.content
+            logger.info("✅ Successfully generated script with AI")
+            return script
+            
+        except Exception as ai_error:
+            logger.warning(f"🔶 AI generation failed: {ai_error}")
+            return generate_demo_script()
         
     except Exception as e:
-        logger.error(f"GPT script generation error: {e}")
+        logger.error(f"❌ AI script generation error: {e}")
         return generate_demo_script()
 
 async def generate_voiceover_elevenlabs(script: str, language: str, voice_style: str, speed: float) -> str:
-    """Generate voiceover using ElevenLabs with better error handling"""
+    """Generate voiceover using ElevenLabs"""
     
     voice_mapping = {
         "hindi": "Rachel",
@@ -601,11 +548,11 @@ async def generate_voiceover_elevenlabs(script: str, language: str, voice_style:
     voice_id = voice_mapping.get(language.lower(), "Brian")
     
     try:
-        logger.info(f"Generating voiceover in {language} with voice {voice_id}")
+        logger.info(f"🎵 Generating voiceover in {language} with voice {voice_id}")
         
-        # Use a shorter script for testing to avoid abuse detection
+        # Use a shorter script for testing
         if len(script) > 500:
-            script = script[:500] + "... (content truncated for demo)"
+            script = script[:500] + "... (content truncated)"
         
         audio = generate(
             text=script,
@@ -613,7 +560,7 @@ async def generate_voiceover_elevenlabs(script: str, language: str, voice_style:
             model="eleven_multilingual_v1"
         )
         
-        # Save the file properly
+        # Save the file
         filename = f"voiceover_{uuid.uuid4().hex[:8]}.mp3"
         filepath = Path("static/voiceovers") / filename
         
@@ -623,28 +570,22 @@ async def generate_voiceover_elevenlabs(script: str, language: str, voice_style:
         return filename
         
     except Exception as e:
-        error_msg = str(e)
-        if "Free Tier" in error_msg or "abuse" in error_msg.lower():
-            logger.warning("ElevenLabs free tier restricted")
-            raise Exception("ElevenLabs free tier restricted. Please upgrade to paid plan or use demo mode.")
-        else:
-            logger.error(f"ElevenLabs API error: {e}")
-            raise
+        logger.error(f"❌ ElevenLabs API error: {e}")
+        raise
 
-# Enhanced demo voiceover function
 async def generate_demo_voiceover(request: VoiceOverRequest) -> Dict:
-    """Generate enhanced demo voiceover response"""
+    """Generate demo voiceover response"""
     filename = f"demo_{uuid.uuid4().hex[:8]}.mp3"
     filepath = Path("static/voiceovers") / filename
     
     try:
-        # Create a simple text file that can be served as audio
+        # Create a simple demo file
         demo_content = f"Demo voiceover for {request.language} - {request.voice_style} style"
         
         async with aiofiles.open(filepath, "w") as f:
             await f.write(demo_content)
         
-        logger.info(f"Created demo voiceover file: {filename}")
+        logger.info(f"🔶 Created demo voiceover file: {filename}")
         
         return {
             "success": True,
@@ -654,12 +595,12 @@ async def generate_demo_voiceover(request: VoiceOverRequest) -> Dict:
                 "voice_style": request.voice_style,
                 "duration_estimate": len(request.script) // 15,
                 "timestamp": get_timestamp(),
-                "note": "Demo mode - ElevenLabs service restricted or not configured",
+                "note": "Demo mode - AI service not configured",
                 "service": "demo"
             }
         }
     except Exception as e:
-        logger.error(f"Error creating demo voiceover: {e}")
+        logger.error(f"❌ Error creating demo voiceover: {e}")
         raise HTTPException(500, "Voiceover service unavailable")
 
 # Media Search Functions
@@ -693,7 +634,7 @@ async def search_pixabay(query: str, media_type: str) -> List[Dict]:
         
         return results
     except Exception as e:
-        logger.error(f"Pixabay search error: {e}")
+        logger.error(f"❌ Pixabay search error: {e}")
         return get_demo_media()
 
 async def search_pexels(query: str, media_type: str) -> List[Dict]:
@@ -738,7 +679,7 @@ async def search_pexels(query: str, media_type: str) -> List[Dict]:
         
         return results
     except Exception as e:
-        logger.error(f"Pexels search error: {e}")
+        logger.error(f"❌ Pexels search error: {e}")
         return get_demo_media()
 
 def add_indian_context(query: str) -> str:
@@ -758,27 +699,28 @@ def filter_culturally_appropriate(media_list: List[Dict]) -> List[Dict]:
     
     return filtered_media
 
-# Video Processing with MoviePy (Simplified for demo)
+# Video Processing (Demo version)
 async def process_video_background(project_id: str, script: str, media_files: List[str], 
                                  voiceover_file: str, platform: str, duration: int):
-    """Background video processing with MoviePy"""
+    """Background video processing - demo version"""
     try:
         project = projects_db[project_id]
         project["progress"] = 10
         project["status"] = "processing"
         
-        logger.info(f"Starting video processing for project {project_id}")
+        logger.info(f"🎬 Starting video processing for project {project_id}")
         
         # Simulate video processing for demo
         for i in range(10):
-            await asyncio.sleep(2)  # Simulate processing time
+            await asyncio.sleep(2)
             project["progress"] = 10 + (i * 9)
+            logger.info(f"📊 Project {project_id} progress: {project['progress']}%")
         
-        # Create a simple demo video file
+        # Create demo files
         video_filename = f"{project_id}.mp4"
         video_path = Path("static/videos") / video_filename
         
-        # Create a simple text file as video for demo
+        # Create a simple demo video file
         with open(video_path, "w") as f:
             f.write(f"Demo video for project {project_id}")
         
@@ -795,10 +737,10 @@ async def process_video_background(project_id: str, script: str, media_files: Li
         project["download_url"] = f"/static/videos/{video_filename}"
         project["thumbnail_url"] = f"/static/thumbnails/{thumbnail_filename}"
         
-        logger.info(f"Video processing completed for project {project_id}")
+        logger.info(f"✅ Video processing completed for project {project_id}")
         
     except Exception as e:
-        logger.error(f"Video processing error for {project_id}: {str(e)}")
+        logger.error(f"❌ Video processing error for {project_id}: {str(e)}")
         projects_db[project_id]["status"] = "failed"
         projects_db[project_id]["error"] = str(e)
 
@@ -850,13 +792,6 @@ def get_demo_media() -> List[Dict]:
             'preview_url': 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=300',
             'tags': 'education, learning, indian students',
             'type': 'image'
-        },
-        {
-            'id': 'demo3',
-            'url': 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500',
-            'preview_url': 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=300',
-            'tags': 'marketing, digital, social media',
-            'type': 'image'
         }
     ]
 
@@ -879,7 +814,7 @@ def generate_storyboard_from_script(script: str, duration: int) -> List[Dict]:
     storyboard = []
     scene_duration = duration // max(len(scenes), 1)
     
-    for i, scene in enumerate(scenes[:8]):  # Max 8 scenes
+    for i, scene in enumerate(scenes[:8]):
         storyboard.append({
             "scene_number": i + 1,
             "duration": scene_duration,
