@@ -1242,7 +1242,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
-import elevenlabs
 from elevenlabs import set_api_key, generate
 import os
 import json
@@ -1257,8 +1256,7 @@ from pathlib import Path
 import time
 
 # MoviePy imports
-from moviepy.editor import ImageClip, CompositeVideoClip, AudioFileClip, concatenate_videoclips, ColorClip
-from moviepy.video.fx import resize
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, ColorClip
 
 # Configure logging
 logging.basicConfig(
@@ -1269,11 +1267,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AI Video Content Creator API",
-    description="Advanced AI-powered video creation platform",
+    description="AI-powered video creation platform",
     version="2.0.0"
 )
 
-# CORS middleware
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -1282,13 +1280,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuration
+# Config
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# Create directories
+# Directories
 BASE_DIR = Path("static")
 VOICEOVER_DIR = BASE_DIR / "voiceovers"
 VIDEO_DIR = BASE_DIR / "videos"
@@ -1298,12 +1296,13 @@ TEMP_DIR = BASE_DIR / "temp"
 for directory in [BASE_DIR, VOICEOVER_DIR, VIDEO_DIR, THUMBNAIL_DIR, TEMP_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# Setup AI Services
+# Setup AI Services - FIXED
 def setup_ai_services():
     services_status = {}
     
     try:
         if OPENAI_API_KEY:
+            # Fixed: Simple initialization without extra params
             openai_client = OpenAI(api_key=OPENAI_API_KEY)
             services_status['openai'] = "Connected"
         else:
@@ -1312,6 +1311,7 @@ def setup_ai_services():
     except Exception as e:
         openai_client = None
         services_status['openai'] = f"Error: {str(e)}"
+        logger.error(f"OpenAI setup error: {e}")
     
     try:
         if ELEVENLABS_API_KEY:
@@ -1321,13 +1321,14 @@ def setup_ai_services():
             services_status['elevenlabs'] = "No API key"
     except Exception as e:
         services_status['elevenlabs'] = f"Error: {str(e)}"
+        logger.error(f"ElevenLabs setup error: {e}")
     
     return services_status, openai_client
 
 ai_services_status, openai_client = setup_ai_services()
 logger.info(f"AI Services Status: {ai_services_status}")
 
-# Pydantic Models
+# Models
 class ScriptRequest(BaseModel):
     topic: str
     duration: int
@@ -1348,10 +1349,9 @@ SUPPORTED_LANGUAGES = ["hindi", "tamil", "telugu", "bengali", "marathi", "gujara
 SUPPORTED_CONTENT_TYPES = ["educational", "marketing", "entertainment", "news", "tutorial"]
 SUPPORTED_PLATFORMS = ["youtube", "instagram", "tiktok", "facebook", "whatsapp"]
 
-# Storage
 projects_db = {}
 
-# Utility Functions
+# Utils
 async def generate_project_id():
     return f"proj_{uuid.uuid4().hex[:8]}"
 
@@ -1359,23 +1359,21 @@ def get_timestamp():
     return datetime.now().isoformat()
 
 def cleanup_old_files(directory: Path, max_age_hours: int = 24):
-    """Clean up files older than specified hours"""
     try:
         current_time = time.time()
         for file_path in directory.glob("*"):
             if file_path.is_file():
-                file_age = current_time - file_path.stat().st_mtime
-                if file_age > (max_age_hours * 3600):
+                if (current_time - file_path.stat().st_mtime) > (max_age_hours * 3600):
                     file_path.unlink()
-                    logger.info(f"Cleaned up old file: {file_path}")
+                    logger.info(f"Cleaned up: {file_path}")
     except Exception as e:
-        logger.error(f"Error cleaning up files: {e}")
+        logger.error(f"Cleanup error: {e}")
 
-# API Routes
+# Routes
 @app.get("/")
 async def root():
     return {
-        "message": "AI Video Content Creator API",
+        "message": "AI Video Creator API",
         "status": "active",
         "version": "2.0.0",
         "ai_services": ai_services_status
@@ -1383,38 +1381,38 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    cleanup_old_files(TEMP_DIR, max_age_hours=2)
-    cleanup_old_files(VOICEOVER_DIR, max_age_hours=48)
-    cleanup_old_files(VIDEO_DIR, max_age_hours=48)
+    cleanup_old_files(TEMP_DIR, 2)
+    cleanup_old_files(VOICEOVER_DIR, 48)
+    cleanup_old_files(VIDEO_DIR, 48)
     
     return {
         "status": "healthy",
         "timestamp": get_timestamp(),
-        "ai_services": ai_services_status,
-        "storage": {
-            "voiceovers": len(list(VOICEOVER_DIR.glob("*.mp3"))),
-            "videos": len(list(VIDEO_DIR.glob("*.mp4"))),
-            "thumbnails": len(list(THUMBNAIL_DIR.glob("*.jpg")))
-        }
+        "ai_services": ai_services_status
     }
 
 @app.post("/generate-script")
 async def generate_script(script_request: ScriptRequest):
     try:
-        logger.info(f"Script generation: {script_request.topic}")
+        logger.info(f"Script request: {script_request.topic}")
         
         if script_request.target_language.lower() not in SUPPORTED_LANGUAGES:
-            raise HTTPException(400, f"Unsupported language")
+            raise HTTPException(400, "Unsupported language")
         
-        prompt = build_prompt(script_request)
-        
+        prompt = f"""Create a {script_request.duration} minute video script about: {script_request.topic}
+Content Type: {script_request.content_type}
+Language: {script_request.target_language}
+Platform: {script_request.target_platform}
+
+Structure with scenes, dialogue, and visual descriptions."""
+
         try:
             script = await asyncio.wait_for(
-                generate_script_with_ai(prompt),
+                generate_script_ai(prompt),
                 timeout=60.0
             )
         except asyncio.TimeoutError:
-            raise HTTPException(408, "Script generation timeout")
+            raise HTTPException(408, "Timeout")
         
         storyboard = generate_storyboard(script, script_request.duration)
         
@@ -1425,7 +1423,6 @@ async def generate_script(script_request: ScriptRequest):
             "metadata": {
                 "topic": script_request.topic,
                 "duration": script_request.duration,
-                "language": script_request.target_language,
                 "timestamp": get_timestamp()
             }
         }
@@ -1493,7 +1490,7 @@ async def search_media(
         }
 
     except Exception as e:
-        logger.error(f"Media search error: {e}")
+        logger.error(f"Media error: {e}")
         raise HTTPException(500, str(e))
 
 @app.post("/create-video-project")
@@ -1507,7 +1504,7 @@ async def create_video_project(
     duration: int = Form(...)
 ):
     try:
-        logger.info(f"Creating project: {title}")
+        logger.info(f"Creating: {title}")
         
         project_id = await generate_project_id()
         
@@ -1546,7 +1543,7 @@ async def create_video_project(
         }
 
     except Exception as e:
-        logger.error(f"Project creation error: {e}")
+        logger.error(f"Project error: {e}")
         raise HTTPException(500, str(e))
 
 @app.get("/project-status/{project_id}")
@@ -1575,17 +1572,8 @@ async def download_video(filename: str):
         )
     raise HTTPException(404, "Video not found")
 
-# Core Functions
-def build_prompt(request: ScriptRequest) -> str:
-    return f"""Create a {request.duration} minute video script about: {request.topic}
-
-Content Type: {request.content_type}
-Language: {request.target_language}
-Platform: {request.target_platform}
-
-Structure with scene descriptions, dialogue, and visual cues."""
-
-async def generate_script_with_ai(prompt: str) -> str:
+# AI Functions
+async def generate_script_ai(prompt: str) -> str:
     try:
         if not openai_client:
             return get_demo_script()
@@ -1602,7 +1590,8 @@ async def generate_script_with_ai(prompt: str) -> str:
                     temperature=0.7
                 )
                 return response.choices[0].message.content
-            except:
+            except Exception as e:
+                logger.warning(f"{model} failed: {e}")
                 continue
         
         return get_demo_script()
@@ -1612,16 +1601,13 @@ async def generate_script_with_ai(prompt: str) -> str:
         return get_demo_script()
 
 async def create_voiceover(script: str, language: str, voice_style: str) -> str:
-    voice_map = {
-        "hindi": "Rachel", "english": "Brian"
-    }
-    
+    voice_map = {"hindi": "Rachel", "english": "Brian"}
     voice_id = voice_map.get(language.lower(), "Rachel")
     
     try:
         if ELEVENLABS_API_KEY:
             audio = generate(
-                text=script[:1000],  # Limit for demo
+                text=script[:1000],
                 voice=voice_id,
                 model="eleven_multilingual_v1"
             )
@@ -1636,8 +1622,7 @@ async def create_voiceover(script: str, language: str, voice_style: str) -> str:
     except Exception as e:
         logger.error(f"ElevenLabs error: {e}")
     
-    # Fallback: create demo file
-    filename = f"demo_voice_{uuid.uuid4().hex[:8]}.mp3"
+    filename = f"demo_{uuid.uuid4().hex[:8]}.mp3"
     filepath = VOICEOVER_DIR / filename
     with open(filepath, "wb") as f:
         f.write(b"Demo audio")
@@ -1670,7 +1655,7 @@ async def search_pixabay(query: str, media_type: str) -> List[Dict]:
         } for item in data.get('hits', [])]
         
     except Exception as e:
-        logger.error(f"Pixabay error: {e}")
+        logger.error(f"Pixabay: {e}")
         return get_demo_media()
 
 async def search_pexels(query: str, media_type: str) -> List[Dict]:
@@ -1695,23 +1680,21 @@ async def search_pexels(query: str, media_type: str) -> List[Dict]:
         } for item in data.get('photos', [])]
         
     except Exception as e:
-        logger.error(f"Pexels error: {e}")
+        logger.error(f"Pexels: {e}")
         return get_demo_media()
 
-# Video Processing with MoviePy
+# Video Processing
 async def process_video(project_id: str, media_urls: List[str], 
                        voiceover_file: str, duration: int):
     try:
         project = projects_db[project_id]
         project["progress"] = 10
         
-        logger.info(f"Processing video: {project_id}")
+        logger.info(f"Processing: {project_id}")
         
-        # Download media
         project["progress"] = 30
         media_paths = await download_media(media_urls)
         
-        # Get voiceover path
         voiceover_path = None
         if voiceover_file and voiceover_file.startswith('/static/voiceovers/'):
             filename = voiceover_file.split('/')[-1]
@@ -1719,7 +1702,6 @@ async def process_video(project_id: str, media_urls: List[str],
         
         project["progress"] = 50
         
-        # Create video
         video_filename = f"{project_id}.mp4"
         video_path = VIDEO_DIR / video_filename
         
@@ -1731,7 +1713,6 @@ async def process_video(project_id: str, media_urls: List[str],
             project
         )
         
-        # Cleanup
         for path in media_paths:
             Path(path).unlink(missing_ok=True)
         
@@ -1739,16 +1720,16 @@ async def process_video(project_id: str, media_urls: List[str],
         project["progress"] = 100
         project["download_url"] = f"/static/videos/{video_filename}"
         
-        logger.info(f"Video completed: {project_id}")
+        logger.info(f"Completed: {project_id}")
         
     except Exception as e:
-        logger.error(f"Video processing error: {e}")
+        logger.error(f"Processing error: {e}")
         projects_db[project_id]["status"] = "failed"
         projects_db[project_id]["error"] = str(e)
 
 async def download_media(urls: List[str]) -> List[str]:
     paths = []
-    for i, url in enumerate(urls[:5]):  # Max 5 images
+    for i, url in enumerate(urls[:5]):
         try:
             response = requests.get(url, timeout=30)
             if response.status_code == 200:
@@ -1770,7 +1751,7 @@ async def create_video_moviepy(media_paths: List[str], voiceover_path: Path,
     try:
         project["progress"] = 60
         
-        total_duration = duration * 60  # seconds
+        total_duration = duration * 60
         clips = []
         
         if media_paths:
@@ -1785,7 +1766,7 @@ async def create_video_moviepy(media_paths: List[str], voiceover_path: Path,
                     progress = 60 + (i / len(media_paths)) * 20
                     project["progress"] = int(progress)
                 except Exception as e:
-                    logger.error(f"Image processing error: {e}")
+                    logger.error(f"Image error: {e}")
         
         if not clips:
             clip = ColorClip(size=(1920, 1080), color=(100, 100, 200), 
@@ -1794,10 +1775,8 @@ async def create_video_moviepy(media_paths: List[str], voiceover_path: Path,
         
         project["progress"] = 80
         
-        # Concatenate clips
         final_clip = concatenate_videoclips(clips, method="compose")
         
-        # Add audio
         if voiceover_path and voiceover_path.exists():
             try:
                 audio = AudioFileClip(str(voiceover_path))
@@ -1809,7 +1788,6 @@ async def create_video_moviepy(media_paths: List[str], voiceover_path: Path,
         
         project["progress"] = 90
         
-        # Write video
         final_clip.write_videofile(
             str(output_path),
             fps=24,
@@ -1820,7 +1798,6 @@ async def create_video_moviepy(media_paths: List[str], voiceover_path: Path,
             logger=None
         )
         
-        # Cleanup
         final_clip.close()
         for clip in clips:
             clip.close()
@@ -1829,21 +1806,21 @@ async def create_video_moviepy(media_paths: List[str], voiceover_path: Path,
         logger.error(f"MoviePy error: {e}")
         raise
 
-# Demo Functions
+# Demo
 def get_demo_script() -> str:
-    return """VIDEO SCRIPT: Digital Marketing in India
+    return """VIDEO SCRIPT: Digital Marketing
 
 SCENE 1 (0:00-0:30):
-Opening shot of Indian marketplace transitioning to digital devices
-"Welcome to the digital revolution in India!"
+Opening with digital devices
+"Welcome to digital marketing!"
 
 SCENE 2 (0:30-1:30):
-Social media platforms and business growth
-"Learn how small businesses are reaching millions..."
+Social media platforms
+"Learn to connect with millions..."
 
 SCENE 3 (1:30-2:00):
-Call to action with success metrics
-"Start your digital journey today!"
+Call to action
+"Start your journey today!"
 """
 
 def get_demo_media() -> List[Dict]:
@@ -1851,7 +1828,7 @@ def get_demo_media() -> List[Dict]:
         'id': f'demo{i}',
         'url': f'https://images.unsplash.com/photo-{1556740758 + i * 1000}?w=1920',
         'preview_url': f'https://images.unsplash.com/photo-{1556740758 + i * 1000}?w=300',
-        'tags': 'business, india',
+        'tags': 'business',
         'type': 'image'
     } for i in range(5)]
 
@@ -1859,11 +1836,10 @@ def generate_storyboard(script: str, duration: int) -> List[Dict]:
     return [{
         "scene_number": i + 1,
         "duration": duration // 3,
-        "description": f"Scene {i + 1} of video",
-        "visuals": "AI generated content"
+        "description": f"Scene {i + 1}",
+        "visuals": "AI content"
     } for i in range(3)]
 
-# Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
