@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Content Creator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #8b5cf6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.95);
+        }
+        
+        .step-card {
+            transition: transform 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .step-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .step-card.active {
+            border: 2px solid var(--primary-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .step-card.active .step-icon {
+            background: white;
+            color: var(--primary-color);
+        }
+        
+        .step-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin: 0 auto 15px;
+        }
+        
+        .video-preview {
+            background: #000;
+            border-radius: 10px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        .progress-bar {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            border-radius: 25px;
+            padding: 10px 30px;
+            font-weight: 600;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .language-badge {
+            background: var(--primary-color);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin: 2px;
+        }
+        
+        .script-output {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        
+        .media-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .media-item {
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        
+        .media-item:hover {
+            transform: scale(1.05);
+        }
+        
+        .media-item.selected {
+            border: 3px solid var(--primary-color);
+        }
+        
+        .media-item img {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .tab-content {
+            min-height: 400px;
+        }
+        
+        .platform-icon {
+            font-size: 1.5rem;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-video me-2"></i>AI Video Creator
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text text-light">
+                    <i class="fas fa-bolt me-1"></i>Powered by AI
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container my-5">
+        <!-- Header -->
+        <div class="text-center mb-5">
+            <h1 class="text-white display-4 fw-bold mb-3">Create Amazing Videos with AI</h1>
+            <p class="text-light lead">Professional video content for Indian creators, educators, and businesses</p>
+        </div>
+
+        <!-- Progress Steps -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card step-card text-center p-3 active" data-step="1">
+                    <div class="step-icon">
+                        <i class="fas fa-edit"></i>
+                    </div>
+                    <h5>Script & Plan</h5>
+                    <small>AI-powered script generation</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card step-card text-center p-3" data-step="2">
+                    <div class="step-icon">
+                        <i class="fas fa-microphone"></i>
+                    </div>
+                    <h5>Voiceover</h5>
+                    <small>Multi-language audio</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card step-card text-center p-3" data-step="3">
+                    <div class="step-icon">
+                        <i class="fas fa-images"></i>
+                    </div>
+                    <h5>Media</h5>
+                    <small>Stock images & videos</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card step-card text-center p-3" data-step="4">
+                    <div class="step-icon">
+                        <i class="fas fa-film"></i>
+                    </div>
+                    <h5>Export</h5>
+                    <small>Final video creation</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="card p-4">
+            <!-- Step 1: Script Generation -->
+            <div class="step-content" id="step-1">
+                <h3 class="mb-4"><i class="fas fa-edit me-2"></i>Generate Your Video Script</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <form id="scriptForm">
+                            <div class="mb-3">
+                                <label class="form-label">Video Topic *</label>
+                                <input type="text" class="form-control" id="topic" placeholder="e.g., Digital Marketing for Small Businesses" required>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Duration (minutes) *</label>
+                                        <input type="number" class="form-control" id="duration" min="1" max="30" value="2" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Content Type *</label>
+                                        <select class="form-select" id="contentType" required>
+                                            <option value="educational">Educational</option>
+                                            <option value="marketing">Marketing</option>
+                                            <option value="entertainment">Entertainment</option>
+                                            <option value="news">News</option>
+                                            <option value="tutorial">Tutorial</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Target Language *</label>
+                                <select class="form-select" id="language" required>
+                                    <option value="hindi">Hindi</option>
+                                    <option value="tamil">Tamil</option>
+                                    <option value="telugu">Telugu</option>
+                                    <option value="bengali">Bengali</option>
+                                    <option value="marathi">Marathi</option>
+                                    <option value="gujarati">Gujarati</option>
+                                    <option value="kannada">Kannada</option>
+                                    <option value="malayalam">Malayalam</option>
+                                    <option value="punjabi">Punjabi</option>
+                                    <option value="english">English</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Target Platform *</label>
+                                <select class="form-select" id="platform" required>
+                                    <option value="youtube"><i class="fab fa-youtube platform-icon"></i>YouTube</option>
+                                    <option value="instagram"><i class="fab fa-instagram platform-icon"></i>Instagram</option>
+                                    <option value="tiktok"><i class="fab fa-tiktok platform-icon"></i>TikTok</option>
+                                    <option value="facebook"><i class="fab fa-facebook platform-icon"></i>Facebook</option>
+                                    <option value="whatsapp"><i class="fab fa-whatsapp platform-icon"></i>WhatsApp</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Cultural Context</label>
+                                <textarea class="form-control" id="culturalContext" rows="2" placeholder="e.g., Focus on urban youth in North India..."></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Target Audience</label>
+                                <input type="text" class="form-control" id="targetAudience" placeholder="e.g., Small business owners, Students...">
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-magic me-2"></i>Generate Script with AI
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="loading-spinner" id="scriptLoading">
+                            <div class="spinner-border text-primary mb-3" role="status"></div>
+                            <p>Generating your script with AI... (max 60 seconds)</p>
+                        </div>
+
+                        <div id="scriptOutput" style="display: none;">
+                            <h5>Generated Script:</h5>
+                            <div class="script-output mb-3" id="scriptText"></div>
+                            
+                            <h6>Storyboard:</h6>
+                            <div class="script-output mb-3" id="storyboardText"></div>
+                            
+                            <button class="btn btn-success w-100" onclick="nextStep(2)">
+                                <i class="fas fa-arrow-right me-2"></i>Continue to Voiceover
+                            </button>
+                        </div>
+
+                        <div id="scriptPlaceholder" class="text-center text-muted p-5">
+                            <i class="fas fa-file-alt fa-3x mb-3"></i>
+                            <p>Your AI-generated script will appear here. Fill out the form and click "Generate Script" to get started.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Voiceover Generation -->
+            <div class="step-content" id="step-2" style="display: none;">
+                <h3 class="mb-4"><i class="fas fa-microphone me-2"></i>Add Voiceover</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <form id="voiceoverForm">
+                            <div class="mb-3">
+                                <label class="form-label">Script Text</label>
+                                <textarea class="form-control" id="voiceoverScript" rows="8" placeholder="Paste your script here..."></textarea>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Voice Style</label>
+                                        <select class="form-select" id="voiceStyle">
+                                            <option value="professional">Professional</option>
+                                            <option value="friendly">Friendly</option>
+                                            <option value="energetic">Energetic</option>
+                                            <option value="calm">Calm</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Speed</label>
+                                        <select class="form-select" id="voiceSpeed">
+                                            <option value="0.8">Slow</option>
+                                            <option value="1.0" selected>Normal</option>
+                                            <option value="1.2">Fast</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-volume-up me-2"></i>Generate Voiceover
+                            </button>
+                        </form>
+
+                        <div class="mt-3">
+                            <button class="btn btn-outline-secondary w-100" onclick="previousStep(1)">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Script
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="loading-spinner" id="voiceoverLoading">
+                            <div class="spinner-border text-primary mb-3" role="status"></div>
+                            <p>Generating voiceover in selected language...</p>
+                        </div>
+
+                        <div id="voiceoverOutput" style="display: none;">
+                            <h5>Voiceover Generated!</h5>
+                            <div class="mb-3">
+                                <audio controls class="w-100" id="voiceoverAudio">
+                                    Your browser does not support the audio element.
+                                </audio>
+                            </div>
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Voiceover successfully created in <span id="voiceoverLanguage"></span>
+                            </div>
+                            
+                            <button class="btn btn-success w-100" onclick="nextStep(3)">
+                                <i class="fas fa-arrow-right me-2"></i>Continue to Media Selection
+                            </button>
+                        </div>
+
+                        <div id="voiceoverPlaceholder" class="text-center text-muted p-5">
+                            <i class="fas fa-microphone-alt fa-3x mb-3"></i>
+                            <p>Generate AI voiceover for your script. The audio player will appear here once generated.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Media Selection -->
+            <div class="step-content" id="step-3" style="display: none;">
+                <h3 class="mb-4"><i class="fas fa-images me-2"></i>Select Media</h3>
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <form id="mediaForm">
+                            <div class="mb-3">
+                                <label class="form-label">Search Media</label>
+                                <input type="text" class="form-control" id="mediaQuery" placeholder="e.g., business, technology, nature...">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Media Type</label>
+                                <select class="form-select" id="mediaType">
+                                    <option value="image">Images</option>
+                                    <option value="video">Videos</option>
+                                </select>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="culturalContextCheck" checked>
+                                <label class="form-check-label">Include Indian cultural context</label>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100 mb-3">
+                                <i class="fas fa-search me-2"></i>Search Media
+                            </button>
+                        </form>
+
+                        <div class="selected-media mb-3">
+                            <h6>Selected Media:</h6>
+                            <div id="selectedMediaList" class="media-gallery"></div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-outline-secondary" onclick="previousStep(2)">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Voiceover
+                            </button>
+                            <button class="btn btn-success" onclick="nextStep(4)">
+                                <i class="fas fa-arrow-right me-2"></i>Continue to Export
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-8">
+                        <div class="loading-spinner" id="mediaLoading">
+                            <div class="spinner-border text-primary mb-3" role="status"></div>
+                            <p>Searching for relevant media...</p>
+                        </div>
+
+                        <div id="mediaResults">
+                            <h6>Search Results:</h6>
+                            <div class="media-gallery" id="mediaGallery"></div>
+                        </div>
+
+                        <div id="mediaPlaceholder" class="text-center text-muted p-5">
+                            <i class="fas fa-images fa-3x mb-3"></i>
+                            <p>Search for images and videos to include in your video. Results will appear here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Video Export -->
+            <div class="step-content" id="step-4" style="display: none;">
+                <h3 class="mb-4"><i class="fas fa-film me-2"></i>Create & Export Video</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <form id="exportForm">
+                            <div class="mb-3">
+                                <label class="form-label">Project Title *</label>
+                                <input type="text" class="form-control" id="projectTitle" placeholder="e.g., My Marketing Video" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Export Platform</label>
+                                <select class="form-select" id="exportPlatform">
+                                    <option value="youtube">YouTube</option>
+                                    <option value="instagram">Instagram</option>
+                                    <option value="tiktok">TikTok</option>
+                                    <option value="facebook">Facebook</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Include Subtitles</label>
+                                <select class="form-select" id="includeSubtitles">
+                                    <option value="yes">Yes</option>
+                                    <option value="no">No</option>
+                                </select>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-play me-2"></i>Create Video
+                            </button>
+                        </form>
+
+                        <div class="mt-3">
+                            <button class="btn btn-outline-secondary w-100" onclick="previousStep(3)">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Media
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="loading-spinner" id="exportLoading">
+                            <div class="spinner-border text-primary mb-3" role="status"></div>
+                            <p>Creating your video... This may take a few minutes</p>
+                            <div class="progress mt-3">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" id="exportProgress" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div id="exportOutput" style="display: none;">
+                            <h5>Video Created Successfully!</h5>
+                            <div class="video-preview mb-3">
+                                <i class="fas fa-play-circle fa-3x"></i>
+                            </div>
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                Your video is ready for download
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-success" onclick="downloadVideo()">
+                                    <i class="fas fa-download me-2"></i>Download Video
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="createNewProject()">
+                                    <i class="fas fa-plus me-2"></i>Create New Project
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="exportPlaceholder" class="text-center text-muted p-5">
+                            <i class="fas fa-film fa-3x mb-3"></i>
+                            <p>Configure your export settings and create your final video. Processing time depends on video length.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container text-center">
+            <p>&copy; 2024 AI Video Content Creator. Built for Indian content creators.</p>
+            <div class="language-badges">
+                <span class="language-badge">Hindi</span>
+                <span class="language-badge">Tamil</span>
+                <span class="language-badge">Telugu</span>
+                <span class="language-badge">Bengali</span>
+                <span class="language-badge">Marathi</span>
+                <span class="language-badge">Gujarati</span>
+                <span class="language-badge">Kannada</span>
+                <span class="language-badge">Malayalam</span>
+                <span class="language-badge">Punjabi</span>
+                <span class="language-badge">English</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // API Base URL - Update this to your Render URL
+        const API_BASE_URL = 'http://localhost:8000'; // Change to your Render URL
+        
+        let currentStep = 1;
+        let currentScript = '';
+        let currentVoiceoverUrl = '';
+        let selectedMedia = [];
+        let currentProjectId = '';
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            // Step navigation
+            document.querySelectorAll('.step-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const step = parseInt(this.dataset.step);
+                    if (step <= currentStep) {
+                        showStep(step);
+                    }
+                });
+            });
+
+            // Form submissions
+            document.getElementById('scriptForm').addEventListener('submit', generateScript);
+            document.getElementById('voiceoverForm').addEventListener('submit', generateVoiceover);
+            document.getElementById('mediaForm').addEventListener('submit', searchMedia);
+            document.getElementById('exportForm').addEventListener('submit', createVideoProject);
+        });
+
+        // Step Navigation Functions
+        function showStep(step) {
+            document.querySelectorAll('.step-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            document.querySelectorAll('.step-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            
+            document.getElementById(`step-${step}`).style.display = 'block';
+            document.querySelector(`.step-card[data-step="${step}"]`).classList.add('active');
+            currentStep = step;
+        }
+
+        function nextStep(step) {
+            showStep(step);
+        }
+
+        function previousStep(step) {
+            showStep(step);
+        }
+
+        // API Integration Functions
+        async function generateScript(e) {
+            e.preventDefault();
+            
+            const formData = {
+                topic: document.getElementById('topic').value,
+                duration: parseInt(document.getElementById('duration').value),
+                content_type: document.getElementById('contentType').value,
+                target_language: document.getElementById('language').value,
+                target_platform: document.getElementById('platform').value,
+                cultural_context: document.getElementById('culturalContext').value,
+                target_audience: document.getElementById('targetAudience').value
+            };
+
+            // Show loading
+            document.getElementById('scriptLoading').style.display = 'block';
+            document.getElementById('scriptPlaceholder').style.display = 'none';
+            document.getElementById('scriptOutput').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-script`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentScript = data.script;
+                    document.getElementById('scriptText').textContent = data.script;
+                    document.getElementById('storyboardText').textContent = JSON.stringify(data.storyboard, null, 2);
+                    document.getElementById('voiceoverScript').value = data.script;
+                    
+                    document.getElementById('scriptLoading').style.display = 'none';
+                    document.getElementById('scriptOutput').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Failed to generate script');
+                }
+            } catch (error) {
+                alert('Error generating script: ' + error.message);
+                document.getElementById('scriptLoading').style.display = 'none';
+                document.getElementById('scriptPlaceholder').style.display = 'block';
+            }
+        }
+
+        async function generateVoiceover(e) {
+            e.preventDefault();
+            
+            const formData = {
+                script: document.getElementById('voiceoverScript').value,
+                language: document.getElementById('language').value,
+                voice_style: document.getElementById('voiceStyle').value,
+                speed: parseFloat(document.getElementById('voiceSpeed').value)
+            };
+
+            // Show loading
+            document.getElementById('voiceoverLoading').style.display = 'block';
+            document.getElementById('voiceoverPlaceholder').style.display = 'none';
+            document.getElementById('voiceoverOutput').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-voiceover`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentVoiceoverUrl = data.voiceover_url;
+                    document.getElementById('voiceoverAudio').src = `${API_BASE_URL}${data.voiceover_url}`;
+                    document.getElementById('voiceoverLanguage').textContent = formData.language;
+                    
+                    document.getElementById('voiceoverLoading').style.display = 'none';
+                    document.getElementById('voiceoverOutput').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Failed to generate voiceover');
+                }
+            } catch (error) {
+                alert('Error generating voiceover: ' + error.message);
+                document.getElementById('voiceoverLoading').style.display = 'none';
+                document.getElementById('voiceoverPlaceholder').style.display = 'block';
+            }
+        }
+
+        async function searchMedia(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('query', document.getElementById('mediaQuery').value);
+            formData.append('media_type', document.getElementById('mediaType').value);
+            formData.append('cultural_context', document.getElementById('culturalContextCheck').checked);
+
+            // Show loading
+            document.getElementById('mediaLoading').style.display = 'block';
+            document.getElementById('mediaPlaceholder').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/search-media`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayMediaResults(data.results);
+                    document.getElementById('mediaLoading').style.display = 'none';
+                } else {
+                    throw new Error(data.error || 'Failed to search media');
+                }
+            } catch (error) {
+                alert('Error searching media: ' + error.message);
+                document.getElementById('mediaLoading').style.display = 'none';
+            }
+        }
+
+        function displayMediaResults(media) {
+            const gallery = document.getElementById('mediaGallery');
+            gallery.innerHTML = '';
+            
+            media.forEach(item => {
+                const mediaItem = document.createElement('div');
+                mediaItem.className = 'media-item';
+                mediaItem.innerHTML = `
+                    <img src="${item.preview_url || 'https://via.placeholder.com/150'}" alt="${item.tags}">
+                    <div class="text-center small p-1">${item.tags.split(',').slice(0, 2).join(', ')}</div>
+                `;
+                
+                mediaItem.addEventListener('click', () => toggleMediaSelection(item));
+                gallery.appendChild(mediaItem);
+            });
+        }
+
+        function toggleMediaSelection(media) {
+            const index = selectedMedia.findIndex(m => m.id === media.id);
+            if (index === -1) {
+                selectedMedia.push(media);
+            } else {
+                selectedMedia.splice(index, 1);
+            }
+            updateSelectedMediaList();
+        }
+
+        function updateSelectedMediaList() {
+            const list = document.getElementById('selectedMediaList');
+            list.innerHTML = '';
+            
+            selectedMedia.forEach(media => {
+                const mediaItem = document.createElement('div');
+                mediaItem.className = 'media-item selected';
+                mediaItem.innerHTML = `
+                    <img src="${media.preview_url || 'https://via.placeholder.com/150'}" alt="${media.tags}">
+                `;
+                list.appendChild(mediaItem);
+            });
+        }
+
+        async function createVideoProject(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('title', document.getElementById('projectTitle').value);
+            formData.append('script', currentScript);
+            formData.append('media_files', JSON.stringify(selectedMedia.map(m => m.url)));
+            formData.append('voiceover_file', currentVoiceoverUrl);
+            formData.append('target_platform', document.getElementById('exportPlatform').value);
+            formData.append('duration', parseInt(document.getElementById('duration').value));
+
+            // Show loading
+            document.getElementById('exportLoading').style.display = 'block';
+            document.getElementById('exportPlaceholder').style.display = 'none';
+            document.getElementById('exportOutput').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/create-video-project`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentProjectId = data.project_id;
+                    
+                    // Start polling for progress
+                    pollProjectStatus(data.project_id);
+                } else {
+                    throw new Error(data.error || 'Failed to create video project');
+                }
+            } catch (error) {
+                alert('Error creating video project: ' + error.message);
+                document.getElementById('exportLoading').style.display = 'none';
+            }
+        }
+
+        async function pollProjectStatus(projectId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/project-status/${projectId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('exportProgress').style.width = `${data.progress || 0}%`;
+                    
+                    if (data.status === 'completed') {
+                        document.getElementById('exportLoading').style.display = 'none';
+                        document.getElementById('exportOutput').style.display = 'block';
+                    } else if (data.status === 'processing') {
+                        // Continue polling
+                        setTimeout(() => pollProjectStatus(projectId), 2000);
+                    } else if (data.status === 'failed') {
+                        throw new Error(data.error || 'Video processing failed');
+                    }
+                }
+            } catch (error) {
+                alert('Error checking project status: ' + error.message);
+                document.getElementById('exportLoading').style.display = 'none';
+            }
+        }
+
+        function downloadVideo() {
+            if (currentProjectId) {
+                window.open(`${API_BASE_URL}/videos/${currentProjectId}.mp4`, '_blank');
+            }
+        }
+
+        function createNewProject() {
+            // Reset everything
+            currentStep = 1;
+            currentScript = '';
+            currentVoiceoverUrl = '';
+            selectedMedia = [];
+            currentProjectId = '';
+            
+            // Reset forms
+            document.getElementById('scriptForm').reset();
+            document.getElementById('voiceoverForm').reset();
+            document.getElementById('mediaForm').reset();
+            document.getElementById('exportForm').reset();
+            
+            // Reset displays
+            document.getElementById('scriptOutput').style.display = 'none';
+            document.getElementById('voiceoverOutput').style.display = 'none';
+            document.getElementById('exportOutput').style.display = 'none';
+            document.getElementById('scriptPlaceholder').style.display = 'block';
+            document.getElementById('voiceoverPlaceholder').style.display = 'block';
+            document.getElementById('exportPlaceholder').style.display = 'block';
+            document.getElementById('mediaGallery').innerHTML = '';
+            document.getElementById('selectedMediaList').innerHTML = '';
+            
+            // Show first step
+            showStep(1);
+        }
+    </script>
+</body>
+</html>
