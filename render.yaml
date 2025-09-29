@@ -3,10 +3,19 @@ services:
     name: ai-video-creator
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    pythonVersion: "3.11.9"
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg
+      pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-
-# apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: PIXABAY_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
