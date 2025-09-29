@@ -111,6 +111,7 @@
             overflow-y: auto;
             white-space: pre-wrap;
             font-family: monospace;
+            font-size: 0.9rem;
         }
         
         .media-gallery {
@@ -125,6 +126,7 @@
             overflow: hidden;
             cursor: pointer;
             transition: transform 0.3s ease;
+            border: 2px solid transparent;
         }
         
         .media-item:hover {
@@ -162,6 +164,38 @@
             top: 20px;
             right: 20px;
             z-index: 1000;
+            max-width: 400px;
+        }
+
+        .service-status {
+            font-size: 0.8rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+
+        .status-connected {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .status-demo {
+            background: var(--warning-color);
+            color: white;
+        }
+
+        .status-error {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .demo-notice {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 0.9rem;
         }
     </style>
 </head>
@@ -181,6 +215,7 @@
             <div class="navbar-nav ms-auto">
                 <span class="navbar-text text-light">
                     <i class="fas fa-bolt me-1"></i>Powered by AI
+                    <span id="serviceStatus" class="service-status status-connected">Live</span>
                 </span>
             </div>
         </div>
@@ -239,6 +274,11 @@
             <!-- Step 1: Script Generation -->
             <div class="step-content" id="step-1">
                 <h3 class="mb-4"><i class="fas fa-edit me-2"></i>Generate Your Video Script</h3>
+                
+                <div class="demo-notice" id="scriptDemoNotice" style="display: none;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Demo Mode:</strong> Using sample script data. Connect OpenAI API for AI-generated scripts.
+                </div>
                 
                 <div class="row">
                     <div class="col-md-6">
@@ -306,7 +346,7 @@
                                 <input type="text" class="form-control" id="targetAudience" placeholder="e.g., Small business owners, Students...">
                             </div>
 
-                            <button type="submit" class="btn btn-primary w-100">
+                            <button type="submit" class="btn btn-primary w-100" id="generateScriptBtn">
                                 <i class="fas fa-magic me-2"></i>Generate Script with AI
                             </button>
                         </form>
@@ -322,7 +362,7 @@
                             <h5>Generated Script:</h5>
                             <div class="script-output mb-3" id="scriptText"></div>
                             
-                            <h6>Storyboard:</h6>
+                            <h6>Storyboard Preview:</h6>
                             <div class="script-output mb-3" id="storyboardText"></div>
                             
                             <button class="btn btn-success w-100" onclick="nextStep(2)">
@@ -341,6 +381,11 @@
             <!-- Step 2: Voiceover Generation -->
             <div class="step-content" id="step-2" style="display: none;">
                 <h3 class="mb-4"><i class="fas fa-microphone me-2"></i>Add Voiceover</h3>
+                
+                <div class="demo-notice" id="voiceoverDemoNotice" style="display: none;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Demo Mode:</strong> Using sample voiceover. Connect ElevenLabs API for AI-generated voiceovers.
+                </div>
                 
                 <div class="row">
                     <div class="col-md-6">
@@ -374,7 +419,7 @@
                                 </div>
                             </div>
 
-                            <button type="submit" class="btn btn-primary w-100">
+                            <button type="submit" class="btn btn-primary w-100" id="generateVoiceoverBtn">
                                 <i class="fas fa-volume-up me-2"></i>Generate Voiceover
                             </button>
                         </form>
@@ -402,6 +447,7 @@
                             <div class="alert alert-success">
                                 <i class="fas fa-check-circle me-2"></i>
                                 Voiceover successfully created in <span id="voiceoverLanguage"></span>
+                                <span id="voiceoverService" class="service-status status-connected ms-2">AI</span>
                             </div>
                             
                             <button class="btn btn-success w-100" onclick="nextStep(3)">
@@ -421,12 +467,17 @@
             <div class="step-content" id="step-3" style="display: none;">
                 <h3 class="mb-4"><i class="fas fa-images me-2"></i>Select Media</h3>
                 
+                <div class="demo-notice">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Demo Mode:</strong> Using sample media. Connect Pixabay/Pexels API for real media search.
+                </div>
+                
                 <div class="row">
                     <div class="col-md-4">
                         <form id="mediaForm">
                             <div class="mb-3">
                                 <label class="form-label">Search Media</label>
-                                <input type="text" class="form-control" id="mediaQuery" placeholder="e.g., business, technology, nature...">
+                                <input type="text" class="form-control" id="mediaQuery" placeholder="e.g., business, technology, nature..." value="india business technology">
                             </div>
 
                             <div class="mb-3">
@@ -448,7 +499,7 @@
                         </form>
 
                         <div class="selected-media mb-3">
-                            <h6>Selected Media:</h6>
+                            <h6>Selected Media: <span id="selectedCount">0</span></h6>
                             <div id="selectedMediaList" class="media-gallery"></div>
                         </div>
 
@@ -468,8 +519,8 @@
                             <p>Searching for relevant media...</p>
                         </div>
 
-                        <div id="mediaResults">
-                            <h6>Search Results:</h6>
+                        <div id="mediaResults" style="display: none;">
+                            <h6>Search Results: <span id="resultsCount">0</span> found</h6>
                             <div class="media-gallery" id="mediaGallery"></div>
                         </div>
 
@@ -484,6 +535,11 @@
             <!-- Step 4: Video Export -->
             <div class="step-content" id="step-4" style="display: none;">
                 <h3 class="mb-4"><i class="fas fa-film me-2"></i>Create & Export Video</h3>
+                
+                <div class="demo-notice">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Demo Mode:</strong> Video creation simulation. Connect full backend for actual video processing.
+                </div>
                 
                 <div class="row">
                     <div class="col-md-6">
@@ -504,14 +560,15 @@
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label">Include Subtitles</label>
-                                <select class="form-select" id="includeSubtitles">
-                                    <option value="yes">Yes</option>
-                                    <option value="no">No</option>
+                                <label class="form-label">Video Quality</label>
+                                <select class="form-select" id="videoQuality">
+                                    <option value="720p">720p HD</option>
+                                    <option value="1080p" selected>1080p Full HD</option>
+                                    <option value="4k">4K Ultra HD</option>
                                 </select>
                             </div>
 
-                            <button type="submit" class="btn btn-primary w-100">
+                            <button type="submit" class="btn btn-primary w-100" id="createVideoBtn">
                                 <i class="fas fa-play me-2"></i>Create Video
                             </button>
                         </form>
@@ -530,6 +587,7 @@
                             <div class="progress mt-3">
                                 <div class="progress-bar progress-bar-striped progress-bar-animated" id="exportProgress" style="width: 0%"></div>
                             </div>
+                            <small class="text-muted" id="progressText">Initializing...</small>
                         </div>
 
                         <div id="exportOutput" style="display: none;">
@@ -593,6 +651,7 @@
         let currentVoiceoverUrl = '';
         let selectedMedia = [];
         let currentProjectId = '';
+        let backendStatus = 'unknown';
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -612,6 +671,13 @@
             document.getElementById('mediaForm').addEventListener('submit', searchMedia);
             document.getElementById('exportForm').addEventListener('submit', createVideoProject);
             
+            // Auto-populate script in voiceover form when available
+            document.getElementById('voiceoverForm').addEventListener('focusin', function() {
+                if (currentScript && !document.getElementById('voiceoverScript').value) {
+                    document.getElementById('voiceoverScript').value = currentScript;
+                }
+            });
+            
             // Test backend connection on load
             testBackendConnection();
         });
@@ -622,9 +688,39 @@
                 const response = await fetch(`${API_BASE_URL}/health`);
                 const data = await response.json();
                 console.log('Backend connection successful:', data);
+                
+                updateServiceStatus(data);
+                
+                // Show demo notices based on backend status
+                if (data.ai_services?.openai?.includes('Error') || data.ai_services?.openai?.includes('No API key')) {
+                    document.getElementById('scriptDemoNotice').style.display = 'block';
+                }
+                if (data.ai_services?.elevenlabs?.includes('restricted') || data.ai_services?.elevenlabs?.includes('No API key')) {
+                    document.getElementById('voiceoverDemoNotice').style.display = 'block';
+                }
+                
             } catch (error) {
                 console.error('Backend connection failed:', error);
+                updateServiceStatus({ status: 'error' });
                 showRateLimitAlert('Warning: Cannot connect to backend server. Some features may not work.');
+            }
+        }
+
+        function updateServiceStatus(healthData) {
+            const statusEl = document.getElementById('serviceStatus');
+            
+            if (healthData.status === 'healthy') {
+                statusEl.textContent = 'Live';
+                statusEl.className = 'service-status status-connected';
+                backendStatus = 'connected';
+            } else if (healthData.status === 'error') {
+                statusEl.textContent = 'Offline';
+                statusEl.className = 'service-status status-error';
+                backendStatus = 'offline';
+            } else {
+                statusEl.textContent = 'Demo';
+                statusEl.className = 'service-status status-demo';
+                backendStatus = 'demo';
             }
         }
 
@@ -651,7 +747,7 @@
             
             document.getElementById(`step-${step}`).style.display = 'block';
             document.querySelector(`.step-card[data-step="${step}"]`).classList.add('active');
-            currentStep = step;
+            currentStep = Math.max(currentStep, step);
         }
 
         function nextStep(step) {
@@ -680,6 +776,7 @@
             document.getElementById('scriptLoading').style.display = 'block';
             document.getElementById('scriptPlaceholder').style.display = 'none';
             document.getElementById('scriptOutput').style.display = 'none';
+            document.getElementById('generateScriptBtn').disabled = true;
 
             try {
                 const response = await fetch(`${API_BASE_URL}/generate-script`, {
@@ -695,7 +792,8 @@
                 }
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json().catch(() => ({ detail: 'Server error' }));
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
                 }
 
                 const data = await response.json();
@@ -703,11 +801,23 @@
                 if (data.success) {
                     currentScript = data.script;
                     document.getElementById('scriptText').textContent = data.script;
-                    document.getElementById('storyboardText').textContent = JSON.stringify(data.storyboard, null, 2);
+                    
+                    // Format storyboard for better display
+                    if (data.storyboard && Array.isArray(data.storyboard)) {
+                        const storyboardText = data.storyboard.map(scene => 
+                            `Scene ${scene.scene_number} (${scene.duration}s): ${scene.description}`
+                        ).join('\n\n');
+                        document.getElementById('storyboardText').textContent = storyboardText;
+                    } else {
+                        document.getElementById('storyboardText').textContent = 'Storyboard details will be generated during video creation.';
+                    }
+                    
                     document.getElementById('voiceoverScript').value = data.script;
                     
                     document.getElementById('scriptLoading').style.display = 'none';
                     document.getElementById('scriptOutput').style.display = 'block';
+                    
+                    showRateLimitAlert('Script generated successfully!');
                 } else {
                     throw new Error(data.error || 'Failed to generate script');
                 }
@@ -716,14 +826,22 @@
                 showRateLimitAlert('Error generating script: ' + error.message);
                 document.getElementById('scriptLoading').style.display = 'none';
                 document.getElementById('scriptPlaceholder').style.display = 'block';
+            } finally {
+                document.getElementById('generateScriptBtn').disabled = false;
             }
         }
 
         async function generateVoiceover(e) {
             e.preventDefault();
             
+            const scriptText = document.getElementById('voiceoverScript').value;
+            if (!scriptText.trim()) {
+                showRateLimitAlert('Please enter a script or generate one first.');
+                return;
+            }
+            
             const formData = {
-                script: document.getElementById('voiceoverScript').value,
+                script: scriptText,
                 language: document.getElementById('language').value,
                 voice_style: document.getElementById('voiceStyle').value,
                 speed: parseFloat(document.getElementById('voiceSpeed').value)
@@ -733,6 +851,7 @@
             document.getElementById('voiceoverLoading').style.display = 'block';
             document.getElementById('voiceoverPlaceholder').style.display = 'none';
             document.getElementById('voiceoverOutput').style.display = 'none';
+            document.getElementById('generateVoiceoverBtn').disabled = true;
 
             try {
                 const response = await fetch(`${API_BASE_URL}/generate-voiceover`, {
@@ -748,7 +867,8 @@
                 }
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json().catch(() => ({ detail: 'Server error' }));
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
                 }
 
                 const data = await response.json();
@@ -763,8 +883,20 @@
                     
                     document.getElementById('voiceoverLanguage').textContent = formData.language;
                     
+                    // Update service indicator
+                    const serviceIndicator = document.getElementById('voiceoverService');
+                    if (data.metadata?.service === 'demo') {
+                        serviceIndicator.textContent = 'Demo';
+                        serviceIndicator.className = 'service-status status-demo ms-2';
+                    } else {
+                        serviceIndicator.textContent = 'AI';
+                        serviceIndicator.className = 'service-status status-connected ms-2';
+                    }
+                    
                     document.getElementById('voiceoverLoading').style.display = 'none';
                     document.getElementById('voiceoverOutput').style.display = 'block';
+                    
+                    showRateLimitAlert('Voiceover generated successfully!');
                 } else {
                     throw new Error(data.error || 'Failed to generate voiceover');
                 }
@@ -773,6 +905,8 @@
                 showRateLimitAlert('Error generating voiceover: ' + error.message);
                 document.getElementById('voiceoverLoading').style.display = 'none';
                 document.getElementById('voiceoverPlaceholder').style.display = 'block';
+            } finally {
+                document.getElementById('generateVoiceoverBtn').disabled = false;
             }
         }
 
@@ -787,6 +921,7 @@
             // Show loading
             document.getElementById('mediaLoading').style.display = 'block';
             document.getElementById('mediaPlaceholder').style.display = 'none';
+            document.getElementById('mediaResults').style.display = 'none';
 
             try {
                 const response = await fetch(`${API_BASE_URL}/search-media`, {
@@ -799,7 +934,8 @@
                 }
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json().catch(() => ({ detail: 'Server error' }));
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
                 }
 
                 const data = await response.json();
@@ -807,6 +943,10 @@
                 if (data.success) {
                     displayMediaResults(data.results);
                     document.getElementById('mediaLoading').style.display = 'none';
+                    document.getElementById('mediaResults').style.display = 'block';
+                    document.getElementById('resultsCount').textContent = data.results.length;
+                    
+                    showRateLimitAlert(`Found ${data.results.length} media items`);
                 } else {
                     throw new Error(data.error || 'Failed to search media');
                 }
@@ -821,11 +961,19 @@
             const gallery = document.getElementById('mediaGallery');
             gallery.innerHTML = '';
             
+            if (media.length === 0) {
+                gallery.innerHTML = '<div class="text-center text-muted p-4">No media found. Try a different search term.</div>';
+                return;
+            }
+            
             media.forEach(item => {
+                const isSelected = selectedMedia.some(m => m.id === item.id);
                 const mediaItem = document.createElement('div');
-                mediaItem.className = 'media-item';
+                mediaItem.className = `media-item ${isSelected ? 'selected' : ''}`;
                 mediaItem.innerHTML = `
-                    <img src="${item.preview_url || 'https://via.placeholder.com/150'}" alt="${item.tags}" onerror="this.src='https://via.placeholder.com/150'">
+                    <img src="${item.preview_url || 'https://via.placeholder.com/150?text=Demo'}" 
+                         alt="${item.tags}" 
+                         onerror="this.src='https://via.placeholder.com/150?text=Image+Error'">
                     <div class="text-center small p-1">${item.tags.split(',').slice(0, 2).join(', ')}</div>
                 `;
                 
@@ -846,20 +994,30 @@
 
         function updateSelectedMediaList() {
             const list = document.getElementById('selectedMediaList');
+            const count = document.getElementById('selectedCount');
             list.innerHTML = '';
+            count.textContent = selectedMedia.length;
             
             selectedMedia.forEach(media => {
                 const mediaItem = document.createElement('div');
                 mediaItem.className = 'media-item selected';
                 mediaItem.innerHTML = `
-                    <img src="${media.preview_url || 'https://via.placeholder.com/150'}" alt="${media.tags}" onerror="this.src='https://via.placeholder.com/150'">
+                    <img src="${media.preview_url || 'https://via.placeholder.com/150?text=Selected'}" 
+                         alt="${media.tags}"
+                         onerror="this.src='https://via.placeholder.com/150?text=Image+Error'">
                 `;
+                mediaItem.addEventListener('click', () => toggleMediaSelection(media));
                 list.appendChild(mediaItem);
             });
         }
 
         async function createVideoProject(e) {
             e.preventDefault();
+            
+            if (!currentScript) {
+                showRateLimitAlert('Please generate a script first.');
+                return;
+            }
             
             const mediaFiles = selectedMedia.map(m => m.url);
             const formData = new FormData();
@@ -874,6 +1032,7 @@
             document.getElementById('exportLoading').style.display = 'block';
             document.getElementById('exportPlaceholder').style.display = 'none';
             document.getElementById('exportOutput').style.display = 'none';
+            document.getElementById('createVideoBtn').disabled = true;
 
             try {
                 const response = await fetch(`${API_BASE_URL}/create-video-project`, {
@@ -897,6 +1056,8 @@
                     
                     // Start polling for progress
                     pollProjectStatus(data.project_id);
+                    
+                    showRateLimitAlert('Video creation started! Processing...');
                 } else {
                     throw new Error(data.error || 'Failed to create video project');
                 }
@@ -904,6 +1065,7 @@
                 console.error('Project creation error:', error);
                 showRateLimitAlert('Error creating video project: ' + error.message);
                 document.getElementById('exportLoading').style.display = 'none';
+                document.getElementById('createVideoBtn').disabled = false;
             }
         }
 
@@ -917,11 +1079,14 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    document.getElementById('exportProgress').style.width = `${data.progress || 0}%`;
+                    const progress = data.progress || 0;
+                    document.getElementById('exportProgress').style.width = `${progress}%`;
+                    document.getElementById('progressText').textContent = `Processing... ${progress}%`;
                     
                     if (data.status === 'completed') {
                         document.getElementById('exportLoading').style.display = 'none';
                         document.getElementById('exportOutput').style.display = 'block';
+                        document.getElementById('createVideoBtn').disabled = false;
                         
                         // Set video source
                         const videoPlayer = document.getElementById('videoPlayer');
@@ -929,9 +1094,11 @@
                             videoPlayer.src = `${API_BASE_URL}${data.download_url}`;
                             videoPlayer.load();
                         }
+                        
+                        showRateLimitAlert('Video created successfully!');
                     } else if (data.status === 'processing') {
                         // Continue polling
-                        setTimeout(() => pollProjectStatus(projectId), 2000);
+                        setTimeout(() => pollProjectStatus(projectId), 3000);
                     } else if (data.status === 'failed') {
                         throw new Error(data.error || 'Video processing failed');
                     }
@@ -940,6 +1107,7 @@
                 console.error('Project status error:', error);
                 showRateLimitAlert('Error checking project status: ' + error.message);
                 document.getElementById('exportLoading').style.display = 'none';
+                document.getElementById('createVideoBtn').disabled = false;
             }
         }
 
@@ -975,10 +1143,37 @@
             document.getElementById('mediaGallery').innerHTML = '';
             document.getElementById('selectedMediaList').innerHTML = '';
             document.getElementById('exportProgress').style.width = '0%';
+            document.getElementById('selectedCount').textContent = '0';
+            document.getElementById('resultsCount').textContent = '0';
+            document.getElementById('mediaResults').style.display = 'none';
+            document.getElementById('mediaPlaceholder').style.display = 'block';
+            
+            // Enable buttons
+            document.getElementById('generateScriptBtn').disabled = false;
+            document.getElementById('generateVoiceoverBtn').disabled = false;
+            document.getElementById('createVideoBtn').disabled = false;
             
             // Show first step
             showStep(1);
+            
+            showRateLimitAlert('New project started!');
         }
+
+        // Auto-search for media when reaching step 3
+        function autoSearchMedia() {
+            if (document.getElementById('mediaQuery').value) {
+                document.getElementById('mediaForm').dispatchEvent(new Event('submit'));
+            }
+        }
+
+        // Override nextStep for step 3 to trigger auto-search
+        const originalNextStep = nextStep;
+        nextStep = function(step) {
+            originalNextStep(step);
+            if (step === 3) {
+                setTimeout(autoSearchMedia, 500);
+            }
+        };
     </script>
 </body>
 </html>
