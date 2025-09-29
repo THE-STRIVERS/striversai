@@ -155,9 +155,23 @@
             font-size: 1.5rem;
             margin-right: 10px;
         }
+        
+        .rate-limit-alert {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <!-- Rate Limit Alert -->
+    <div class="alert alert-warning rate-limit-alert" id="rateLimitAlert">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <span id="rateLimitMessage">Rate limit exceeded. Please wait a moment.</span>
+    </div>
+
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
@@ -274,11 +288,11 @@
                             <div class="mb-3">
                                 <label class="form-label">Target Platform *</label>
                                 <select class="form-select" id="platform" required>
-                                    <option value="youtube"><i class="fab fa-youtube platform-icon"></i>YouTube</option>
-                                    <option value="instagram"><i class="fab fa-instagram platform-icon"></i>Instagram</option>
-                                    <option value="tiktok"><i class="fab fa-tiktok platform-icon"></i>TikTok</option>
-                                    <option value="facebook"><i class="fab fa-facebook platform-icon"></i>Facebook</option>
-                                    <option value="whatsapp"><i class="fab fa-whatsapp platform-icon"></i>WhatsApp</option>
+                                    <option value="youtube">YouTube</option>
+                                    <option value="instagram">Instagram</option>
+                                    <option value="tiktok">TikTok</option>
+                                    <option value="facebook">Facebook</option>
+                                    <option value="whatsapp">WhatsApp</option>
                                 </select>
                             </div>
 
@@ -521,7 +535,9 @@
                         <div id="exportOutput" style="display: none;">
                             <h5>Video Created Successfully!</h5>
                             <div class="video-preview mb-3">
-                                <i class="fas fa-play-circle fa-3x"></i>
+                                <video controls class="w-100" id="videoPlayer" style="max-height: 200px;">
+                                    Your browser does not support the video tag.
+                                </video>
                             </div>
                             <div class="alert alert-success">
                                 <i class="fas fa-check-circle me-2"></i>
@@ -568,371 +584,401 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    // API Base URL - Pointing to your Render backend
-    const API_BASE_URL = 'https://striversai-api.onrender.com';
-    
-    let currentStep = 1;
-    let currentScript = '';
-    let currentVoiceoverUrl = '';
-    let selectedMedia = [];
-    let currentProjectId = '';
-
-    // Initialize the application
-    document.addEventListener('DOMContentLoaded', function() {
-        // Step navigation
-        document.querySelectorAll('.step-card').forEach(card => {
-            card.addEventListener('click', function() {
-                const step = parseInt(this.dataset.step);
-                if (step <= currentStep) {
-                    showStep(step);
-                }
-            });
-        });
-
-        // Form submissions
-        document.getElementById('scriptForm').addEventListener('submit', generateScript);
-        document.getElementById('voiceoverForm').addEventListener('submit', generateVoiceover);
-        document.getElementById('mediaForm').addEventListener('submit', searchMedia);
-        document.getElementById('exportForm').addEventListener('submit', createVideoProject);
+    <script>
+        // API Base URL - Pointing to your Render backend
+        const API_BASE_URL = 'https://striversai-api.onrender.com';
         
-        // Test backend connection on load
-        testBackendConnection();
-    });
+        let currentStep = 1;
+        let currentScript = '';
+        let currentVoiceoverUrl = '';
+        let selectedMedia = [];
+        let currentProjectId = '';
 
-    // Test backend connection
-    async function testBackendConnection() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/health`);
-            const data = await response.json();
-            console.log('Backend connection successful:', data);
-        } catch (error) {
-            console.error('Backend connection failed:', error);
-            alert('Warning: Cannot connect to backend server. Some features may not work.');
-        }
-    }
-
-    // Step Navigation Functions
-    function showStep(step) {
-        document.querySelectorAll('.step-content').forEach(content => {
-            content.style.display = 'none';
-        });
-        document.querySelectorAll('.step-card').forEach(card => {
-            card.classList.remove('active');
-        });
-        
-        document.getElementById(`step-${step}`).style.display = 'block';
-        document.querySelector(`.step-card[data-step="${step}"]`).classList.add('active');
-        currentStep = step;
-    }
-
-    function nextStep(step) {
-        showStep(step);
-    }
-
-    function previousStep(step) {
-        showStep(step);
-    }
-
-    // API Integration Functions
-    async function generateScript(e) {
-        e.preventDefault();
-        
-        const formData = {
-            topic: document.getElementById('topic').value,
-            duration: parseInt(document.getElementById('duration').value),
-            content_type: document.getElementById('contentType').value,
-            target_language: document.getElementById('language').value,
-            target_platform: document.getElementById('platform').value,
-            cultural_context: document.getElementById('culturalContext').value,
-            target_audience: document.getElementById('targetAudience').value
-        };
-
-        // Show loading
-        document.getElementById('scriptLoading').style.display = 'block';
-        document.getElementById('scriptPlaceholder').style.display = 'none';
-        document.getElementById('scriptOutput').style.display = 'none';
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/generate-script`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(formData)
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            // Step navigation
+            document.querySelectorAll('.step-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const step = parseInt(this.dataset.step);
+                    if (step <= currentStep) {
+                        showStep(step);
+                    }
+                });
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            // Form submissions
+            document.getElementById('scriptForm').addEventListener('submit', generateScript);
+            document.getElementById('voiceoverForm').addEventListener('submit', generateVoiceover);
+            document.getElementById('mediaForm').addEventListener('submit', searchMedia);
+            document.getElementById('exportForm').addEventListener('submit', createVideoProject);
+            
+            // Test backend connection on load
+            testBackendConnection();
+        });
+
+        // Test backend connection
+        async function testBackendConnection() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                console.log('Backend connection successful:', data);
+            } catch (error) {
+                console.error('Backend connection failed:', error);
+                showRateLimitAlert('Warning: Cannot connect to backend server. Some features may not work.');
             }
+        }
 
-            const data = await response.json();
+        // Rate limit alert
+        function showRateLimitAlert(message) {
+            const alert = document.getElementById('rateLimitAlert');
+            const messageEl = document.getElementById('rateLimitMessage');
+            messageEl.textContent = message;
+            alert.style.display = 'block';
+            
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
 
-            if (data.success) {
-                currentScript = data.script;
-                document.getElementById('scriptText').textContent = data.script;
-                document.getElementById('storyboardText').textContent = JSON.stringify(data.storyboard, null, 2);
-                document.getElementById('voiceoverScript').value = data.script;
-                
+        // Step Navigation Functions
+        function showStep(step) {
+            document.querySelectorAll('.step-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            document.querySelectorAll('.step-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            
+            document.getElementById(`step-${step}`).style.display = 'block';
+            document.querySelector(`.step-card[data-step="${step}"]`).classList.add('active');
+            currentStep = step;
+        }
+
+        function nextStep(step) {
+            showStep(step);
+        }
+
+        function previousStep(step) {
+            showStep(step);
+        }
+
+        // API Integration Functions
+        async function generateScript(e) {
+            e.preventDefault();
+            
+            const formData = {
+                topic: document.getElementById('topic').value,
+                duration: parseInt(document.getElementById('duration').value),
+                content_type: document.getElementById('contentType').value,
+                target_language: document.getElementById('language').value,
+                target_platform: document.getElementById('platform').value,
+                cultural_context: document.getElementById('culturalContext').value,
+                target_audience: document.getElementById('targetAudience').value
+            };
+
+            // Show loading
+            document.getElementById('scriptLoading').style.display = 'block';
+            document.getElementById('scriptPlaceholder').style.display = 'none';
+            document.getElementById('scriptOutput').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-script`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (response.status === 429) {
+                    throw new Error('Rate limit exceeded. Please wait a moment before generating another script.');
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentScript = data.script;
+                    document.getElementById('scriptText').textContent = data.script;
+                    document.getElementById('storyboardText').textContent = JSON.stringify(data.storyboard, null, 2);
+                    document.getElementById('voiceoverScript').value = data.script;
+                    
+                    document.getElementById('scriptLoading').style.display = 'none';
+                    document.getElementById('scriptOutput').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Failed to generate script');
+                }
+            } catch (error) {
+                console.error('Script generation error:', error);
+                showRateLimitAlert('Error generating script: ' + error.message);
                 document.getElementById('scriptLoading').style.display = 'none';
-                document.getElementById('scriptOutput').style.display = 'block';
-            } else {
-                throw new Error(data.error || 'Failed to generate script');
+                document.getElementById('scriptPlaceholder').style.display = 'block';
             }
-        } catch (error) {
-            console.error('Script generation error:', error);
-            alert('Error generating script: ' + error.message);
-            document.getElementById('scriptLoading').style.display = 'none';
-            document.getElementById('scriptPlaceholder').style.display = 'block';
         }
-    }
 
-    async function generateVoiceover(e) {
-        e.preventDefault();
-        
-        const formData = {
-            script: document.getElementById('voiceoverScript').value,
-            language: document.getElementById('language').value,
-            voice_style: document.getElementById('voiceStyle').value,
-            speed: parseFloat(document.getElementById('voiceSpeed').value)
-        };
-
-        // Show loading
-        document.getElementById('voiceoverLoading').style.display = 'block';
-        document.getElementById('voiceoverPlaceholder').style.display = 'none';
-        document.getElementById('voiceoverOutput').style.display = 'none';
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/generate-voiceover`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.success) {
-                currentVoiceoverUrl = data.voiceover_url;
-                document.getElementById('voiceoverAudio').src = `${API_BASE_URL}${data.voiceover_url}`;
-                document.getElementById('voiceoverLanguage').textContent = formData.language;
-                
-                document.getElementById('voiceoverLoading').style.display = 'none';
-                document.getElementById('voiceoverOutput').style.display = 'block';
-            } else {
-                throw new Error(data.error || 'Failed to generate voiceover');
-            }
-        } catch (error) {
-            console.error('Voiceover generation error:', error);
-            alert('Error generating voiceover: ' + error.message);
-            document.getElementById('voiceoverLoading').style.display = 'none';
-            document.getElementById('voiceoverPlaceholder').style.display = 'block';
-        }
-    }
-
-    async function searchMedia(e) {
-        e.preventDefault();
-        
-        const formData = new FormData();
-        formData.append('query', document.getElementById('mediaQuery').value);
-        formData.append('media_type', document.getElementById('mediaType').value);
-        formData.append('cultural_context', document.getElementById('culturalContextCheck').checked);
-
-        // Show loading
-        document.getElementById('mediaLoading').style.display = 'block';
-        document.getElementById('mediaPlaceholder').style.display = 'none';
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/search-media`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.success) {
-                displayMediaResults(data.results);
-                document.getElementById('mediaLoading').style.display = 'none';
-            } else {
-                throw new Error(data.error || 'Failed to search media');
-            }
-        } catch (error) {
-            console.error('Media search error:', error);
-            alert('Error searching media: ' + error.message);
-            document.getElementById('mediaLoading').style.display = 'none';
-        }
-    }
-
-    function displayMediaResults(media) {
-        const gallery = document.getElementById('mediaGallery');
-        gallery.innerHTML = '';
-        
-        media.forEach(item => {
-            const mediaItem = document.createElement('div');
-            mediaItem.className = 'media-item';
-            mediaItem.innerHTML = `
-                <img src="${item.preview_url || 'https://via.placeholder.com/150'}" alt="${item.tags}" onerror="this.src='https://via.placeholder.com/150'">
-                <div class="text-center small p-1">${item.tags.split(',').slice(0, 2).join(', ')}</div>
-            `;
+        async function generateVoiceover(e) {
+            e.preventDefault();
             
-            mediaItem.addEventListener('click', () => toggleMediaSelection(item));
-            gallery.appendChild(mediaItem);
-        });
-    }
+            const formData = {
+                script: document.getElementById('voiceoverScript').value,
+                language: document.getElementById('language').value,
+                voice_style: document.getElementById('voiceStyle').value,
+                speed: parseFloat(document.getElementById('voiceSpeed').value)
+            };
 
-    function toggleMediaSelection(media) {
-        const index = selectedMedia.findIndex(m => m.id === media.id);
-        if (index === -1) {
-            selectedMedia.push(media);
-        } else {
-            selectedMedia.splice(index, 1);
-        }
-        updateSelectedMediaList();
-    }
+            // Show loading
+            document.getElementById('voiceoverLoading').style.display = 'block';
+            document.getElementById('voiceoverPlaceholder').style.display = 'none';
+            document.getElementById('voiceoverOutput').style.display = 'none';
 
-    function updateSelectedMediaList() {
-        const list = document.getElementById('selectedMediaList');
-        list.innerHTML = '';
-        
-        selectedMedia.forEach(media => {
-            const mediaItem = document.createElement('div');
-            mediaItem.className = 'media-item selected';
-            mediaItem.innerHTML = `
-                <img src="${media.preview_url || 'https://via.placeholder.com/150'}" alt="${media.tags}" onerror="this.src='https://via.placeholder.com/150'">
-            `;
-            list.appendChild(mediaItem);
-        });
-    }
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-voiceover`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
 
-    async function createVideoProject(e) {
-    e.preventDefault();
-    
-    const mediaFiles = selectedMedia.map(m => m.url);
-    const formData = new FormData();
-    formData.append('title', document.getElementById('projectTitle').value);
-    formData.append('script', currentScript);
-    formData.append('media_files', JSON.stringify(mediaFiles)); // Stringify the array
-    formData.append('voiceover_file', currentVoiceoverUrl || '');
-    formData.append('target_platform', document.getElementById('exportPlatform').value);
-    formData.append('duration', parseInt(document.getElementById('duration').value));
-
-    // Show loading
-    document.getElementById('exportLoading').style.display = 'block';
-    document.getElementById('exportPlaceholder').style.display = 'none';
-    document.getElementById('exportOutput').style.display = 'none';
-
-    try {
-        console.log('Creating video project with data:', {
-            title: document.getElementById('projectTitle').value,
-            script_length: currentScript.length,
-            media_files_count: mediaFiles.length,
-            voiceover_file: currentVoiceoverUrl,
-            platform: document.getElementById('exportPlatform').value,
-            duration: parseInt(document.getElementById('duration').value)
-        });
-
-        const response = await fetch(`${API_BASE_URL}/create-video-project`, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Server response:', errorText);
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('Project creation response:', data);
-
-        if (data.success) {
-            currentProjectId = data.project_id;
-            
-            // Start polling for progress
-            pollProjectStatus(data.project_id);
-        } else {
-            throw new Error(data.error || 'Failed to create video project');
-        }
-    } catch (error) {
-        console.error('Project creation error:', error);
-        alert('Error creating video project: ' + error.message);
-        document.getElementById('exportLoading').style.display = 'none';
-    }
-}
-
-    async function pollProjectStatus(projectId) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/project-status/${projectId}`);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            
-            if (data.success) {
-                document.getElementById('exportProgress').style.width = `${data.progress || 0}%`;
-                
-                if (data.status === 'completed') {
-                    document.getElementById('exportLoading').style.display = 'none';
-                    document.getElementById('exportOutput').style.display = 'block';
-                } else if (data.status === 'processing') {
-                    // Continue polling
-                    setTimeout(() => pollProjectStatus(projectId), 2000);
-                } else if (data.status === 'failed') {
-                    throw new Error(data.error || 'Video processing failed');
+                if (response.status === 429) {
+                    throw new Error('Rate limit exceeded. Please wait before generating another voiceover.');
                 }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentVoiceoverUrl = data.voiceover_url;
+                    const audioElement = document.getElementById('voiceoverAudio');
+                    audioElement.src = `${API_BASE_URL}${data.voiceover_url}`;
+                    
+                    // Load the audio source
+                    audioElement.load();
+                    
+                    document.getElementById('voiceoverLanguage').textContent = formData.language;
+                    
+                    document.getElementById('voiceoverLoading').style.display = 'none';
+                    document.getElementById('voiceoverOutput').style.display = 'block';
+                } else {
+                    throw new Error(data.error || 'Failed to generate voiceover');
+                }
+            } catch (error) {
+                console.error('Voiceover generation error:', error);
+                showRateLimitAlert('Error generating voiceover: ' + error.message);
+                document.getElementById('voiceoverLoading').style.display = 'none';
+                document.getElementById('voiceoverPlaceholder').style.display = 'block';
             }
-        } catch (error) {
-            console.error('Project status error:', error);
-            alert('Error checking project status: ' + error.message);
-            document.getElementById('exportLoading').style.display = 'none';
         }
-    }
 
-    function downloadVideo() {
-        if (currentProjectId) {
-            window.open(`${API_BASE_URL}/videos/${currentProjectId}.mp4`, '_blank');
-        } else {
-            alert('No video available for download');
+        async function searchMedia(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('query', document.getElementById('mediaQuery').value);
+            formData.append('media_type', document.getElementById('mediaType').value);
+            formData.append('cultural_context', document.getElementById('culturalContextCheck').checked);
+
+            // Show loading
+            document.getElementById('mediaLoading').style.display = 'block';
+            document.getElementById('mediaPlaceholder').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/search-media`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.status === 429) {
+                    throw new Error('Rate limit exceeded. Please wait before searching again.');
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayMediaResults(data.results);
+                    document.getElementById('mediaLoading').style.display = 'none';
+                } else {
+                    throw new Error(data.error || 'Failed to search media');
+                }
+            } catch (error) {
+                console.error('Media search error:', error);
+                showRateLimitAlert('Error searching media: ' + error.message);
+                document.getElementById('mediaLoading').style.display = 'none';
+            }
         }
-    }
 
-    function createNewProject() {
-        // Reset everything
-        currentStep = 1;
-        currentScript = '';
-        currentVoiceoverUrl = '';
-        selectedMedia = [];
-        currentProjectId = '';
-        
-        // Reset forms
-        document.getElementById('scriptForm').reset();
-        document.getElementById('voiceoverForm').reset();
-        document.getElementById('mediaForm').reset();
-        document.getElementById('exportForm').reset();
-        
-        // Reset displays
-        document.getElementById('scriptOutput').style.display = 'none';
-        document.getElementById('voiceoverOutput').style.display = 'none';
-        document.getElementById('exportOutput').style.display = 'none';
-        document.getElementById('scriptPlaceholder').style.display = 'block';
-        document.getElementById('voiceoverPlaceholder').style.display = 'block';
-        document.getElementById('exportPlaceholder').style.display = 'block';
-        document.getElementById('mediaGallery').innerHTML = '';
-        document.getElementById('selectedMediaList').innerHTML = '';
-        
-        // Show first step
-        showStep(1);
-    }
-</script>
+        function displayMediaResults(media) {
+            const gallery = document.getElementById('mediaGallery');
+            gallery.innerHTML = '';
+            
+            media.forEach(item => {
+                const mediaItem = document.createElement('div');
+                mediaItem.className = 'media-item';
+                mediaItem.innerHTML = `
+                    <img src="${item.preview_url || 'https://via.placeholder.com/150'}" alt="${item.tags}" onerror="this.src='https://via.placeholder.com/150'">
+                    <div class="text-center small p-1">${item.tags.split(',').slice(0, 2).join(', ')}</div>
+                `;
+                
+                mediaItem.addEventListener('click', () => toggleMediaSelection(item));
+                gallery.appendChild(mediaItem);
+            });
+        }
+
+        function toggleMediaSelection(media) {
+            const index = selectedMedia.findIndex(m => m.id === media.id);
+            if (index === -1) {
+                selectedMedia.push(media);
+            } else {
+                selectedMedia.splice(index, 1);
+            }
+            updateSelectedMediaList();
+        }
+
+        function updateSelectedMediaList() {
+            const list = document.getElementById('selectedMediaList');
+            list.innerHTML = '';
+            
+            selectedMedia.forEach(media => {
+                const mediaItem = document.createElement('div');
+                mediaItem.className = 'media-item selected';
+                mediaItem.innerHTML = `
+                    <img src="${media.preview_url || 'https://via.placeholder.com/150'}" alt="${media.tags}" onerror="this.src='https://via.placeholder.com/150'">
+                `;
+                list.appendChild(mediaItem);
+            });
+        }
+
+        async function createVideoProject(e) {
+            e.preventDefault();
+            
+            const mediaFiles = selectedMedia.map(m => m.url);
+            const formData = new FormData();
+            formData.append('title', document.getElementById('projectTitle').value);
+            formData.append('script', currentScript);
+            formData.append('media_files', JSON.stringify(mediaFiles));
+            formData.append('voiceover_file', currentVoiceoverUrl || '');
+            formData.append('target_platform', document.getElementById('exportPlatform').value);
+            formData.append('duration', parseInt(document.getElementById('duration').value));
+
+            // Show loading
+            document.getElementById('exportLoading').style.display = 'block';
+            document.getElementById('exportPlaceholder').style.display = 'none';
+            document.getElementById('exportOutput').style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/create-video-project`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.status === 429) {
+                    throw new Error('Rate limit exceeded. Please wait before creating another video.');
+                }
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentProjectId = data.project_id;
+                    
+                    // Start polling for progress
+                    pollProjectStatus(data.project_id);
+                } else {
+                    throw new Error(data.error || 'Failed to create video project');
+                }
+            } catch (error) {
+                console.error('Project creation error:', error);
+                showRateLimitAlert('Error creating video project: ' + error.message);
+                document.getElementById('exportLoading').style.display = 'none';
+            }
+        }
+
+        async function pollProjectStatus(projectId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/project-status/${projectId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('exportProgress').style.width = `${data.progress || 0}%`;
+                    
+                    if (data.status === 'completed') {
+                        document.getElementById('exportLoading').style.display = 'none';
+                        document.getElementById('exportOutput').style.display = 'block';
+                        
+                        // Set video source
+                        const videoPlayer = document.getElementById('videoPlayer');
+                        if (data.download_url) {
+                            videoPlayer.src = `${API_BASE_URL}${data.download_url}`;
+                            videoPlayer.load();
+                        }
+                    } else if (data.status === 'processing') {
+                        // Continue polling
+                        setTimeout(() => pollProjectStatus(projectId), 2000);
+                    } else if (data.status === 'failed') {
+                        throw new Error(data.error || 'Video processing failed');
+                    }
+                }
+            } catch (error) {
+                console.error('Project status error:', error);
+                showRateLimitAlert('Error checking project status: ' + error.message);
+                document.getElementById('exportLoading').style.display = 'none';
+            }
+        }
+
+        function downloadVideo() {
+            if (currentProjectId) {
+                window.open(`${API_BASE_URL}/static/videos/${currentProjectId}.mp4`, '_blank');
+            } else {
+                showRateLimitAlert('No video available for download');
+            }
+        }
+
+        function createNewProject() {
+            // Reset everything
+            currentStep = 1;
+            currentScript = '';
+            currentVoiceoverUrl = '';
+            selectedMedia = [];
+            currentProjectId = '';
+            
+            // Reset forms
+            document.getElementById('scriptForm').reset();
+            document.getElementById('voiceoverForm').reset();
+            document.getElementById('mediaForm').reset();
+            document.getElementById('exportForm').reset();
+            
+            // Reset displays
+            document.getElementById('scriptOutput').style.display = 'none';
+            document.getElementById('voiceoverOutput').style.display = 'none';
+            document.getElementById('exportOutput').style.display = 'none';
+            document.getElementById('scriptPlaceholder').style.display = 'block';
+            document.getElementById('voiceoverPlaceholder').style.display = 'block';
+            document.getElementById('exportPlaceholder').style.display = 'block';
+            document.getElementById('mediaGallery').innerHTML = '';
+            document.getElementById('selectedMediaList').innerHTML = '';
+            document.getElementById('exportProgress').style.width = '0%';
+            
+            // Show first step
+            showStep(1);
+        }
+    </script>
 </body>
 </html>
