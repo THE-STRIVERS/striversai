@@ -1237,13 +1237,13 @@
 #     port = int(os.getenv("PORT", 8000))
 #     uvicorn.run(app, host="0.0.0.0", port=port)
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 import elevenlabs
 from elevenlabs import set_api_key, generate
-import ffmpeg
 import os
 import json
 import asyncio
@@ -1252,20 +1252,42 @@ from datetime import datetime
 from typing import Optional, List, Dict
 import logging
 from pydantic import BaseModel
-import aiofiles
 import tempfile
 import shutil
 import requests
+from pathlib import Path
+import time
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import moviepy.editor as mp
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.VideoClip import ImageClip
+from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+import aiofiles
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AI Video Content Creator API",
     description="Advanced AI-powered video creation platform for Indian content creators",
-    version="1.0.0"
+    version="2.0.0"
 )
+
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware
 app.add_middleware(
@@ -1281,6 +1303,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
+
+# Create directories
+Path("static/voiceovers").mkdir(parents=True, exist_ok=True)
+Path("static/videos").mkdir(parents=True, exist_ok=True)
+Path("static/thumbnails").mkdir(parents=True, exist_ok=True)
+Path("static/temp").mkdir(parents=True, exist_ok=True)
 
 # Setup AI Services
 def setup_ai_services():
@@ -1339,6 +1367,9 @@ class VideoProject(BaseModel):
     status: str = "draft"
     created_at: str
     duration: int
+    progress: int = 0
+    download_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
 
 # Supported configurations
 SUPPORTED_LANGUAGES = ["hindi", "tamil", "telugu", "bengali", "marathi", "gujarati", "kannada", "malayalam", "punjabi", "english"]
@@ -1355,47 +1386,72 @@ async def generate_project_id():
 def get_timestamp():
     return datetime.now().isoformat()
 
+def cleanup_old_files(directory: Path, max_age_hours: int = 24):
+    """Clean up files older than specified hours"""
+    try:
+        current_time = time.time()
+        for file_path in directory.glob("*"):
+            if file_path.is_file() and (current_time - file_path.stat().st_mtime) > (max_age_hours * 3600):
+                file_path.unlink()
+                logger.info(f"Cleaned up old file: {file_path}")
+    except Exception as e:
+        logger.error(f"Error cleaning up files: {e}")
+
 # API Routes
 @app.get("/")
-async def root():
+@limiter.limit("100/minute")
+async def root(request: Request):
     return {
         "message": "AI Video Content Creator API is running!",
         "status": "active",
         "service": "Advanced AI Video Creation Platform",
-        "ai_services": ai_services_status
+        "ai_services": ai_services_status,
+        "version": "2.0.0"
     }
 
 @app.get("/health")
-async def health_check():
+@limiter.limit("60/minute")
+async def health_check(request: Request):
+    # Clean up old files on health check
+    cleanup_old_files(Path("static/temp"))
+    cleanup_old_files(Path("static/voiceovers"))
+    cleanup_old_files(Path("static/videos"))
+    
     return {
         "status": "healthy",
         "timestamp": get_timestamp(),
         "ai_services": ai_services_status,
         "supported_languages": SUPPORTED_LANGUAGES,
         "supported_content_types": SUPPORTED_CONTENT_TYPES,
-        "supported_platforms": SUPPORTED_PLATFORMS
+        "supported_platforms": SUPPORTED_PLATFORMS,
+        "storage": {
+            "voiceovers": len(list(Path("static/voiceovers").glob("*.mp3"))),
+            "videos": len(list(Path("static/videos").glob("*.mp4"))),
+            "thumbnails": len(list(Path("static/thumbnails").glob("*.jpg")))
+        }
     }
 
 @app.post("/generate-script")
-async def generate_script(request: ScriptRequest):
+@limiter.limit("30/minute")
+async def generate_script(request: Request, script_request: ScriptRequest):
     """
     Generate video script using GPT-4 with Indian cultural context
     """
     try:
-        logger.info(f"Script generation request: {request.dict()}")
+        logger.info(f"Script generation request from {request.client.host}: {script_request.dict()}")
         
         # Validate inputs
-        if request.target_language.lower() not in SUPPORTED_LANGUAGES:
+        if script_request.target_language.lower() not in SUPPORTED_LANGUAGES:
             raise HTTPException(400, f"Language must be one of: {SUPPORTED_LANGUAGES}")
         
-        if request.content_type.lower() not in SUPPORTED_CONTENT_TYPES:
+        if script_request.content_type.lower() not in SUPPORTED_CONTENT_TYPES:
             raise HTTPException(400, f"Content type must be one of: {SUPPORTED_CONTENT_TYPES}")
         
-        if request.target_platform.lower() not in SUPPORTED_PLATFORMS:
+        if script_request.target_platform.lower() not in SUPPORTED_PLATFORMS:
             raise HTTPException(400, f"Platform must be one of: {SUPPORTED_PLATFORMS}")
 
         # Build culturally relevant prompt
-        prompt = build_indian_context_prompt(request)
+        prompt = build_indian_context_prompt(script_request)
         
         # Generate script with timeout (60 seconds max)
         try:
@@ -1404,23 +1460,24 @@ async def generate_script(request: ScriptRequest):
                 timeout=60.0
             )
         except asyncio.TimeoutError:
+            logger.warning(f"Script generation timeout for {request.client.host}")
             raise HTTPException(408, "Script generation timed out (60s limit)")
         
         # Generate storyboard
-        storyboard = generate_storyboard_from_script(script, request.duration)
+        storyboard = generate_storyboard_from_script(script, script_request.duration)
         
-        logger.info("Script generation completed successfully")
+        logger.info(f"Script generation completed successfully for {request.client.host}")
         
         return {
             "success": True,
             "script": script,
             "storyboard": storyboard,
             "metadata": {
-                "topic": request.topic,
-                "duration": request.duration,
-                "content_type": request.content_type,
-                "language": request.target_language,
-                "platform": request.target_platform,
+                "topic": script_request.topic,
+                "duration": script_request.duration,
+                "content_type": script_request.content_type,
+                "language": script_request.target_language,
+                "platform": script_request.target_platform,
                 "timestamp": get_timestamp()
             }
         }
@@ -1428,58 +1485,54 @@ async def generate_script(request: ScriptRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Script generation error: {e}")
+        logger.error(f"Script generation error for {request.client.host}: {e}")
         raise HTTPException(500, f"Script generation failed: {str(e)}")
 
 @app.post("/generate-voiceover")
-async def generate_voiceover(request: VoiceOverRequest):
+@limiter.limit("20/minute")
+async def generate_voiceover(request: Request, voiceover_request: VoiceOverRequest):
     """
     Generate voiceover in Indian languages using ElevenLabs
     """
     try:
-        logger.info(f"Voiceover generation request: language={request.language}")
+        logger.info(f"Voiceover generation request from {request.client.host}: language={voiceover_request.language}")
         
-        if request.language.lower() not in SUPPORTED_LANGUAGES:
+        if voiceover_request.language.lower() not in SUPPORTED_LANGUAGES:
             raise HTTPException(400, f"Language must be one of: {SUPPORTED_LANGUAGES}")
 
         if not ELEVENLABS_API_KEY:
             # Demo mode - return mock response
-            return await generate_demo_voiceover(request)
+            return await generate_demo_voiceover(voiceover_request)
         
         # Generate voiceover with ElevenLabs
-        voiceover_data = await generate_voiceover_elevenlabs(
-            request.script,
-            request.language,
-            request.voice_style,
-            request.speed
+        voiceover_filename = await generate_voiceover_elevenlabs(
+            voiceover_request.script,
+            voiceover_request.language,
+            voiceover_request.voice_style,
+            voiceover_request.speed
         )
         
-        # Save voiceover file
-        filename = f"voiceover_{uuid.uuid4().hex[:8]}.mp3"
-        filepath = f"/tmp/{filename}"
-        
-        with open(filepath, "wb") as f:
-            f.write(voiceover_data)
-        
-        logger.info("Voiceover generation completed successfully")
+        logger.info(f"Voiceover generation completed successfully for {request.client.host}")
         
         return {
             "success": True,
-            "voiceover_url": f"/voiceovers/{filename}",
+            "voiceover_url": f"/static/voiceovers/{voiceover_filename}",
             "metadata": {
-                "language": request.language,
-                "voice_style": request.voice_style,
-                "duration_estimate": len(request.script) // 15,
+                "language": voiceover_request.language,
+                "voice_style": voiceover_request.voice_style,
+                "duration_estimate": len(voiceover_request.script) // 15,
                 "timestamp": get_timestamp()
             }
         }
 
     except Exception as e:
-        logger.error(f"Voiceover generation error: {e}")
+        logger.error(f"Voiceover generation error for {request.client.host}: {e}")
         raise HTTPException(500, f"Voiceover generation failed: {str(e)}")
 
 @app.post("/search-media")
+@limiter.limit("40/minute")
 async def search_media(
+    request: Request,
     query: str = Form(...),
     media_type: str = Form("image"),
     cultural_context: bool = Form(True)
@@ -1488,12 +1541,12 @@ async def search_media(
     Search stock media from integrated APIs with Indian context
     """
     try:
-        logger.info(f"Media search: {query}, type: {media_type}")
+        logger.info(f"Media search from {request.client.host}: {query}, type: {media_type}")
         
         # Enhanced query for Indian context
         enhanced_query = add_indian_context(query) if cultural_context else query
         
-        # Search from both stock APIs (max 2 as specified)
+        # Search from both stock APIs
         results = await asyncio.gather(
             search_pixabay(enhanced_query, media_type),
             search_pexels(enhanced_query, media_type),
@@ -1520,15 +1573,17 @@ async def search_media(
         }
 
     except Exception as e:
-        logger.error(f"Media search error: {e}")
+        logger.error(f"Media search error for {request.client.host}: {e}")
         raise HTTPException(500, f"Media search failed: {str(e)}")
 
 @app.post("/create-video-project")
+@limiter.limit("10/minute")
 async def create_video_project(
+    request: Request,
     background_tasks: BackgroundTasks,
     title: str = Form(...),
     script: str = Form(...),
-    media_files: str = Form("[]"),  # Changed to string to handle JSON
+    media_files: str = Form("[]"),
     voiceover_file: str = Form(None),
     target_platform: str = Form("youtube"),
     duration: int = Form(...)
@@ -1537,7 +1592,7 @@ async def create_video_project(
     Create a new video project and start processing
     """
     try:
-        logger.info(f"Creating video project: {title}")
+        logger.info(f"Creating video project from {request.client.host}: {title}")
         
         project_id = await generate_project_id()
         
@@ -1559,7 +1614,7 @@ async def create_video_project(
             duration=duration
         )
         
-        # Store project - use .dict() instead of .model_dump()
+        # Store project
         projects_db[project_id] = project.dict()
         
         # Start background video processing
@@ -1580,16 +1635,17 @@ async def create_video_project(
             "project_id": project_id,
             "status": "processing",
             "message": "Video project created and processing started",
-            "estimated_time": duration * 5,
+            "estimated_time": duration * 10,  # 10 seconds per minute of video
             "timestamp": get_timestamp()
         }
 
     except Exception as e:
-        logger.error(f"Project creation error: {e}")
+        logger.error(f"Project creation error for {request.client.host}: {e}")
         raise HTTPException(500, f"Project creation failed: {str(e)}")
 
 @app.get("/project-status/{project_id}")
-async def get_project_status(project_id: str):
+@limiter.limit("60/minute")
+async def get_project_status(request: Request, project_id: str):
     """
     Get video project processing status
     """
@@ -1607,43 +1663,21 @@ async def get_project_status(project_id: str):
         "timestamp": get_timestamp()
     }
 
-@app.post("/generate-subtitles")
-async def generate_subtitles(
-    video_file: UploadFile = File(...),
-    language: str = Form("english")
-):
-    """
-    Generate subtitles for video content
-    """
-    try:
-        if not video_file.content_type or not video_file.content_type.startswith('video/'):
-            raise HTTPException(400, "Please upload a valid video file")
-        
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_video:
-            content = await video_file.read()
-            temp_video.write(content)
-            temp_video_path = temp_video.name
-        
-        try:
-            # Generate subtitles (simplified implementation)
-            subtitles = await generate_subtitles_ai(temp_video_path, language)
-            
-            return {
-                "success": True,
-                "subtitles": subtitles,
-                "language": language,
-                "format": "srt",
-                "timestamp": get_timestamp()
-            }
-        finally:
-            # Cleanup
-            if os.path.exists(temp_video_path):
-                os.unlink(temp_video_path)
+@app.get("/static/voiceovers/{filename}")
+async def get_voiceover(filename: str):
+    """Serve voiceover files"""
+    file_path = Path("static/voiceovers") / filename
+    if file_path.exists():
+        return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+    raise HTTPException(404, "Voiceover file not found")
 
-    except Exception as e:
-        logger.error(f"Subtitle generation error: {e}")
-        raise HTTPException(500, f"Subtitle generation failed: {str(e)}")
+@app.get("/static/videos/{filename}")
+async def get_video(filename: str):
+    """Serve video files"""
+    file_path = Path("static/videos") / filename
+    if file_path.exists():
+        return FileResponse(file_path, media_type="video/mp4", filename=filename)
+    raise HTTPException(404, "Video file not found")
 
 # Core AI Functions
 def build_indian_context_prompt(request: ScriptRequest) -> str:
@@ -1723,7 +1757,7 @@ async def generate_script_with_gpt4(prompt: str) -> str:
         logger.error(f"GPT script generation error: {e}")
         return generate_demo_script()
 
-async def generate_voiceover_elevenlabs(script: str, language: str, voice_style: str, speed: float) -> bytes:
+async def generate_voiceover_elevenlabs(script: str, language: str, voice_style: str, speed: float) -> str:
     """Generate voiceover using ElevenLabs"""
     
     voice_mapping = {
@@ -1747,15 +1781,33 @@ async def generate_voiceover_elevenlabs(script: str, language: str, voice_style:
         audio = generate(
             text=script,
             voice=voice_id,
-            model="eleven_multilingual_v1",
-            speed=speed
+            model="eleven_multilingual_v1"
         )
         
-        return audio
+        # Save the file properly
+        filename = f"voiceover_{uuid.uuid4().hex[:8]}.mp3"
+        filepath = Path("static/voiceovers") / filename
+        
+        with open(filepath, "wb") as f:
+            f.write(audio)
+        
+        return filename
+        
     except Exception as e:
         logger.error(f"ElevenLabs API error: {e}")
-        # Return empty bytes - frontend will handle demo mode
-        return b""
+        # Create a demo voiceover file
+        return await create_demo_voiceover_file()
+
+async def create_demo_voiceover_file() -> str:
+    """Create a demo voiceover file when ElevenLabs fails"""
+    filename = f"demo_voiceover_{uuid.uuid4().hex[:8]}.mp3"
+    filepath = Path("static/voiceovers") / filename
+    
+    # Create an empty demo file
+    with open(filepath, "wb") as f:
+        f.write(b"Demo voiceover content")
+    
+    return filename
 
 # Media Search Functions
 async def search_pixabay(query: str, media_type: str) -> List[Dict]:
@@ -1821,7 +1873,6 @@ async def search_pexels(query: str, media_type: str) -> List[Dict]:
                     'type': media_type
                 })
             else:
-                # For videos, use the first video file
                 video_files = item.get('video_files', [])
                 if video_files:
                     results.append({
@@ -1854,32 +1905,56 @@ def filter_culturally_appropriate(media_list: List[Dict]) -> List[Dict]:
     
     return filtered_media
 
-# Video Processing
+# Video Processing with MoviePy
 async def process_video_background(project_id: str, script: str, media_files: List[str], 
                                  voiceover_file: str, platform: str, duration: int):
-    """Background video processing with FFmpeg"""
+    """Background video processing with MoviePy"""
     try:
         project = projects_db[project_id]
         project["progress"] = 10
         project["status"] = "processing"
         
         logger.info(f"Starting video processing for project {project_id}")
-        logger.info(f"Media files: {media_files}")
-        logger.info(f"Voiceover file: {voiceover_file}")
-        logger.info(f"Platform: {platform}, Duration: {duration}")
         
-        # Simulate processing steps with better progress updates
-        steps = [20, 40, 60, 80, 100]
-        for progress in steps:
-            await asyncio.sleep(2)  # Simulate processing time
-            project["progress"] = progress
-            logger.info(f"Project {project_id} progress: {progress}%")
+        # Download media files
+        project["progress"] = 20
+        downloaded_media = await download_media_files(media_files)
         
-        # Create demo download URLs
+        # Get voiceover file path
+        voiceover_path = None
+        if voiceover_file and voiceover_file.startswith('/static/voiceovers/'):
+            voiceover_filename = voiceover_file.split('/')[-1]
+            voiceover_path = Path("static/voiceovers") / voiceover_filename
+        
+        project["progress"] = 40
+        
+        # Create video using MoviePy
+        video_filename = f"{project_id}.mp4"
+        video_path = Path("static/videos") / video_filename
+        
+        await create_video_with_moviepy(
+            downloaded_media,
+            voiceover_path,
+            video_path,
+            duration,
+            project
+        )
+        
+        # Create thumbnail
+        thumbnail_filename = f"{project_id}.jpg"
+        thumbnail_path = Path("static/thumbnails") / thumbnail_filename
+        await create_thumbnail(video_path, thumbnail_path)
+        
+        # Update project status
         project["status"] = "completed"
         project["progress"] = 100
-        project["download_url"] = f"/videos/demo_{project_id}.mp4"
-        project["thumbnail_url"] = f"/thumbnails/demo_{project_id}.jpg"
+        project["download_url"] = f"/static/videos/{video_filename}"
+        project["thumbnail_url"] = f"/static/thumbnails/{thumbnail_filename}"
+        
+        # Cleanup temporary files
+        for media_path in downloaded_media:
+            if Path(media_path).exists():
+                Path(media_path).unlink()
         
         logger.info(f"Video processing completed for project {project_id}")
         
@@ -1888,21 +1963,117 @@ async def process_video_background(project_id: str, script: str, media_files: Li
         projects_db[project_id]["status"] = "failed"
         projects_db[project_id]["error"] = str(e)
 
-async def generate_subtitles_ai(video_path: str, language: str) -> str:
-    """Generate subtitles using AI (simplified)"""
-    # Simplified implementation - in production, use proper speech-to-text
-    return f"""1
-00:00:00,000 --> 00:00:05,000
-This is a sample subtitle for {language} content.
+async def download_media_files(media_urls: List[str]) -> List[str]:
+    """Download media files to temporary storage"""
+    downloaded_paths = []
+    
+    for i, url in enumerate(media_urls):
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                filename = f"temp_media_{uuid.uuid4().hex[:8]}.jpg"
+                filepath = Path("static/temp") / filename
+                
+                with open(filepath, "wb") as f:
+                    f.write(response.content)
+                
+                downloaded_paths.append(str(filepath))
+                logger.info(f"Downloaded media {i+1}/{len(media_urls)}")
+            else:
+                logger.warning(f"Failed to download media: {url}")
+        except Exception as e:
+            logger.error(f"Error downloading media {url}: {e}")
+    
+    return downloaded_paths
 
-2
-00:00:05,000 --> 00:00:10,000
-Your video content would have proper subtitles here.
+async def create_video_with_moviepy(media_paths: List[str], voiceover_path: str, 
+                                  output_path: Path, duration: int, project: dict):
+    """Create video using MoviePy with proper compositing"""
+    try:
+        project["progress"] = 50
+        
+        # Calculate duration per image
+        total_duration = duration * 60  # Convert to seconds
+        clips = []
+        
+        if media_paths:
+            duration_per_image = total_duration / len(media_paths)
+            
+            for i, media_path in enumerate(media_paths):
+                try:
+                    # Create image clip with calculated duration
+                    clip = ImageClip(media_path, duration=duration_per_image)
+                    
+                    # Resize to 1920x1080 (Full HD)
+                    clip = clip.resize(height=1080)
+                    
+                    # Center the image
+                    clip = clip.set_position('center')
+                    
+                    clips.append(clip)
+                    
+                    # Update progress
+                    progress = 50 + (i / len(media_paths)) * 30
+                    project["progress"] = int(progress)
+                    
+                except Exception as e:
+                    logger.error(f"Error processing image {media_path}: {e}")
+                    continue
+        
+        # If no media available, create a simple color clip
+        if not clips:
+            from moviepy.video.VideoClip import ColorClip
+            clip = ColorClip(size=(1920, 1080), color=(100, 100, 200), duration=total_duration)
+            clips = [clip]
+        
+        project["progress"] = 80
+        
+        # Create final video clip
+        final_clip = CompositeVideoClip(clips, size=(1920, 1080))
+        
+        # Add voiceover if available
+        if voiceover_path and Path(voiceover_path).exists():
+            try:
+                audio_clip = AudioFileClip(str(voiceover_path))
+                # Adjust audio duration to match video
+                if audio_clip.duration > total_duration:
+                    audio_clip = audio_clip.subclip(0, total_duration)
+                final_clip = final_clip.set_audio(audio_clip)
+            except Exception as e:
+                logger.error(f"Error adding audio: {e}")
+        
+        project["progress"] = 90
+        
+        # Write video file
+        final_clip.write_videofile(
+            str(output_path),
+            fps=24,
+            codec='libx264',
+            audio_codec='aac',
+            verbose=False,
+            logger=None
+        )
+        
+        # Close clips to free memory
+        final_clip.close()
+        for clip in clips:
+            clip.close()
+        
+    except Exception as e:
+        logger.error(f"MoviePy video creation error: {e}")
+        raise
 
-3
-00:00:10,000 --> 00:00:15,000
-AI-generated subtitles for better accessibility.
-"""
+async def create_thumbnail(video_path: Path, thumbnail_path: Path):
+    """Create thumbnail from video"""
+    try:
+        if video_path.exists():
+            clip = VideoFileClip(str(video_path))
+            # Get frame at 10% of video duration
+            thumbnail_time = clip.duration * 0.1
+            clip.save_frame(str(thumbnail_path), t=thumbnail_time)
+            clip.close()
+    except Exception as e:
+        logger.error(f"Thumbnail creation error: {e}")
 
 # Demo/fallback functions
 def generate_demo_script() -> str:
@@ -1938,9 +2109,12 @@ Contact: www.example.com | Phone: +91-XXXXXX-XXXX
 
 async def generate_demo_voiceover(request: VoiceOverRequest) -> Dict:
     """Generate demo voiceover response"""
+    # Create a demo voiceover file
+    filename = await create_demo_voiceover_file()
+    
     return {
         "success": True,
-        "voiceover_url": "/demo/voiceover.mp3",
+        "voiceover_url": f"/static/voiceovers/{filename}",
         "metadata": {
             "language": request.language,
             "voice_style": request.voice_style,
@@ -1978,7 +2152,6 @@ def get_demo_media() -> List[Dict]:
 
 def generate_storyboard_from_script(script: str, duration: int) -> List[Dict]:
     """Generate storyboard structure from script"""
-    # Simple parsing of script into scenes
     lines = script.split('\n')
     scenes = []
     current_scene = []
@@ -2008,18 +2181,8 @@ def generate_storyboard_from_script(script: str, duration: int) -> List[Dict]:
     
     return storyboard
 
-# Static file serving for demo files
-from fastapi.staticfiles import StaticFiles
-
-# Create necessary directories
-os.makedirs("/tmp/voiceovers", exist_ok=True)
-os.makedirs("/tmp/videos", exist_ok=True)
-os.makedirs("/tmp/thumbnails", exist_ok=True)
-
-app.mount("/voiceovers", StaticFiles(directory="/tmp/voiceovers"), name="voiceovers")
-app.mount("/videos", StaticFiles(directory="/tmp/videos"), name="videos")
-app.mount("/thumbnails", StaticFiles(directory="/tmp/thumbnails"), name="thumbnails")
-app.mount("/demo", StaticFiles(directory="/tmp"), name="demo")
+# Static file serving
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 if __name__ == "__main__":
     import uvicorn
