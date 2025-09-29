@@ -2,7 +2,6 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from openai import OpenAI
 import elevenlabs
 from elevenlabs import set_api_key, generate
 import os
@@ -58,25 +57,18 @@ Path("static/videos").mkdir(parents=True, exist_ok=True)
 Path("static/thumbnails").mkdir(parents=True, exist_ok=True)
 Path("static/temp").mkdir(parents=True, exist_ok=True)
 
-# Setup AI Services - ULTRA SIMPLE VERSION
+# Setup AI Services - NO OPENAI CLIENT INITIALIZATION
 def setup_ai_services():
-    """Initialize AI services with minimal configuration"""
+    """Initialize AI services without OpenAI client"""
     services_status = {}
-    openai_client = None
     
-    # OpenAI Client Setup - ABSOLUTELY MINIMAL
-    try:
-        if OPENAI_API_KEY:
-            # SIMPLEST POSSIBLE INITIALIZATION - NO EXTRA PARAMETERS
-            openai_client = OpenAI(api_key=OPENAI_API_KEY)
-            services_status['openai'] = "Connected"
-            logger.info("✅ OpenAI client initialized successfully")
-        else:
-            services_status['openai'] = "No API key - using demo mode"
-            logger.warning("⚠️ OpenAI API key not found")
-    except Exception as e:
-        services_status['openai'] = f"Error: {str(e)}"
-        logger.error(f"❌ OpenAI initialization failed: {e}")
+    # OpenAI Status - Just check if API key exists, don't initialize client
+    if OPENAI_API_KEY:
+        services_status['openai'] = "API key available - using direct API calls"
+        logger.info("✅ OpenAI API key available")
+    else:
+        services_status['openai'] = "No API key - using demo mode"
+        logger.warning("⚠️ OpenAI API key not found")
     
     # ElevenLabs Setup
     try:
@@ -91,9 +83,9 @@ def setup_ai_services():
         services_status['elevenlabs'] = f"Error: {str(e)}"
         logger.error(f"❌ ElevenLabs setup failed: {e}")
     
-    return services_status, openai_client
+    return services_status
 
-ai_services_status, openai_client = setup_ai_services()
+ai_services_status = setup_ai_services()
 logger.info(f"🎯 AI Services Status: {ai_services_status}")
 
 # Pydantic Models
@@ -232,11 +224,11 @@ async def generate_script(request: Request, script_request: ScriptRequest):
         try:
             script = await asyncio.wait_for(
                 generate_script_with_ai(prompt),
-                timeout=60.0
+                timeout=30.0
             )
         except asyncio.TimeoutError:
             logger.warning(f"⏰ Script generation timeout")
-            raise HTTPException(408, "Script generation timed out (60s limit)")
+            raise HTTPException(408, "Script generation timed out (30s limit)")
         
         # Generate storyboard
         storyboard = generate_storyboard_from_script(script, script_request.duration)
@@ -499,34 +491,50 @@ def build_indian_context_prompt(request: ScriptRequest) -> str:
     """
 
 async def generate_script_with_ai(prompt: str) -> str:
-    """Generate script using AI with fallback"""
+    """Generate script using direct OpenAI API calls or demo fallback"""
+    if not OPENAI_API_KEY:
+        logger.info("🔶 Using demo script - No OpenAI API key")
+        return generate_demo_script()
+    
     try:
-        if not openai_client:
-            logger.info("🔶 Using demo script - OpenAI client not available")
-            return generate_demo_script()
+        logger.info("🤖 Attempting to generate script with OpenAI API")
         
-        try:
-            logger.info("🤖 Attempting to generate script with AI")
-            response = openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",  # Use 3.5-turbo as it's more reliable
-                messages=[
-                    {"role": "system", "content": "You are an expert video script writer specializing in Indian content creation. Create engaging, culturally appropriate scripts."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
-                temperature=0.7
-            )
-            
-            script = response.choices[0].message.content
-            logger.info("✅ Successfully generated script with AI")
-            return script
-            
-        except Exception as ai_error:
-            logger.warning(f"🔶 AI generation failed: {ai_error}")
-            return generate_demo_script()
+        # Use direct HTTP requests to OpenAI API to avoid client issues
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
         
+        data = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "You are an expert video script writer specializing in Indian content creation. Create engaging, culturally appropriate scripts."},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 2000,
+            "temperature": 0.7
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=30
+            ) as response:
+                
+                if response.status == 200:
+                    result = await response.json()
+                    script = result["choices"][0]["message"]["content"]
+                    logger.info("✅ Successfully generated script with OpenAI API")
+                    return script
+                else:
+                    error_text = await response.text()
+                    logger.warning(f"🔶 OpenAI API request failed: {error_text}")
+                    return generate_demo_script()
+                    
     except Exception as e:
-        logger.error(f"❌ AI script generation error: {e}")
+        logger.warning(f"🔶 OpenAI API call failed: {e}")
         return generate_demo_script()
 
 async def generate_voiceover_elevenlabs(script: str, language: str, voice_style: str, speed: float) -> str:
